@@ -36,9 +36,6 @@
   <button id="clear" class="s" disabled>Hapus gambar</button>
 </div>
 <div class="row">
-  <label style="font-size:.85rem"><input type="checkbox" id="inv" checked> Invers warna untuk TFT</label>
-</div>
-<div class="row">
   <label style="font-size:.85rem">Mode kirim:
     <select id="mode">
       <option value="resp">Andal (disarankan)</option>
@@ -61,7 +58,7 @@ const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM 
 const $ = id => document.getElementById(id);
 const log = t => $('log').textContent = t;
 const cv = $('cv'), ctx = cv.getContext('2d');
-let dev, dataC, statC, jpeg = null, lastStatus = -1, waiter = null, busy = false, hasPic = false;
+let dev, dataC, statC, jpeg = null, lastStatus = -1, waiter = null, busy = false;
 
 // ---- cek dukungan Web Bluetooth (GitHub Pages sudah HTTPS, jadi secure context terpenuhi)
 const btOK = window.isSecureContext && 'bluetooth' in navigator;
@@ -92,33 +89,15 @@ $('file').onchange = async e => {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 240, 240);
   ctx.drawImage(bmp, (240 - w) / 2, (240 - h) / 2, w, h);
   if (bmp.close) bmp.close();
-  hasPic = true;
-  await encode();
-};
-
-// Encode JPEG dari canvas. Jika "invers" aktif, piksel dibalik di canvas tersembunyi
-// (preview di layar web tetap normal).
-async function encode() {
-  jpeg = null; upd();
-  let src = cv;
-  if ($('inv').checked) {
-    const oc = document.createElement('canvas');
-    oc.width = oc.height = 240;
-    const id = ctx.getImageData(0, 0, 240, 240), d = id.data;
-    for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
-    oc.getContext('2d').putImageData(id, 0, 0);
-    src = oc;
-  }
   for (let q = 0.92; q >= 0.3; q -= 0.06) {
-    const b = await new Promise(r => src.toBlob(r, 'image/jpeg', q));
+    const b = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
     if (!b) continue;
     const u = new Uint8Array(await b.arrayBuffer());
     if (u.length <= MAX_BYTES) { jpeg = u; log(`JPEG ${(u.length/1024).toFixed(1)} KB (kualitas ${q.toFixed(2)})`); break; }
   }
   if (!jpeg) log('Gambar terlalu besar walau kualitas diturunkan.');
   upd();
-}
-$('inv').onchange = () => { if (hasPic) encode(); };
+};
 
 // ---- koneksi BLE
 function onNotify(e) {
