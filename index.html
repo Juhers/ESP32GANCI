@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#2a6df4">
 <title>Gantungan Musik – Kirim Gambar</title>
+<!-- favicon inline supaya tidak ada request /favicon.ico (404) di GitHub Pages -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎵%3C/text%3E%3C/svg%3E">
 <style>
   :root{--bg:#fff;--fg:#1a1a1a;--card:#f1f1f1;--ac:#2a6df4;--mut:#666}
@@ -23,7 +24,7 @@
 </head>
 <body>
 <h1>Gantungan Musik – Kirim Gambar</h1>
-<p class="m">Gambar di-crop ke 240×240, diubah ke RGB565 mentah (115.200 byte), lalu dikirim lewat BLE. Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak didukung.</p>
+<p class="m">Gambar di-crop ke 240×240, dikompres JPEG, lalu dikirim lewat BLE. Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak didukung.</p>
 
 <canvas id="cv" width="240" height="240"></canvas>
 <div class="row">
@@ -49,17 +50,17 @@
 const SVC  = '7a1c0001-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const DATA = '7a1c0002-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const STAT = '7a1c0003-5b6e-4f0a-9d5e-1f2c3d4e5a60';
-const W = 240;
-const RAW_BYTES = W * W * 2;   // 115200, harus sama dengan IMG_RAW_BYTES di ESP32
-const CHUNK = 100;             // payload per paket
-const ERR = {3:'ukuran tidak valid (harus 115200 byte)',4:'CRC salah',5:'urutan paket salah',
-             6:'RAM ESP32 kurang',7:'LittleFS bermasalah',9:'timeout di ESP32'};
+const MAX_BYTES = 48 * 1024;   // samakan dengan IMG_MAX_BYTES di Config.h
+const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
+const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM ESP32 kurang',
+             7:'LittleFS bermasalah',9:'timeout di ESP32',10:'JPEG tidak valid (harus baseline)'};
 
 const $ = id => document.getElementById(id);
 const log = t => $('log').textContent = t;
-const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
-let dev, dataC, statC, raw = null, lastStatus = -1, waiter = null, busy = false;
+const cv = $('cv'), ctx = cv.getContext('2d');
+let dev, dataC, statC, jpeg = null, lastStatus = -1, waiter = null, busy = false;
 
+// ---- cek dukungan Web Bluetooth (GitHub Pages sudah HTTPS, jadi secure context terpenuhi)
 const btOK = window.isSecureContext && 'bluetooth' in navigator;
 if (!btOK) {
   $('conn').disabled = true;
@@ -73,52 +74,28 @@ const T = new Uint32Array(256);
 for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[i] = c >>> 0; }
 function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
 
-function upd(){ $('send').disabled = busy || !(dataC && raw); $('clear').disabled = busy || !dataC; }
+function upd(){ $('send').disabled = busy || !(dataC && jpeg); $('clear').disabled = busy || !dataC; }
 
-// ---- RGB888 (canvas, sRGB) -> RGB565 little-endian
-function toRgb565() {
-  const d = ctx.getImageData(0, 0, W, W).data;
-  const out = new Uint8Array(RAW_BYTES);
-  for (let i = 0, o = 0; i < d.length; i += 4, o += 2) {
-    const v = ((d[i] & 0xF8) << 8) | ((d[i + 1] & 0xFC) << 3) | (d[i + 2] >> 3);
-    out[o] = v & 255;
-    out[o + 1] = v >> 8;
-  }
-  return out;
-}
-
-// Pratinjau: tampilkan kembali hasil 565 supaya sama dengan yang tampil di TFT
-function previewRgb565(buf) {
-  const img = ctx.createImageData(W, W);
-  for (let i = 0, o = 0; i < img.data.length; i += 4, o += 2) {
-    const v = buf[o] | (buf[o + 1] << 8);
-    const r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
-    img.data[i]     = (r << 3) | (r >> 2);
-    img.data[i + 1] = (g << 2) | (g >> 4);
-    img.data[i + 2] = (b << 3) | (b >> 2);
-    img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
-// ---- pilih gambar -> crop cover 240x240 -> RGB565
+// ---- pilih gambar -> crop cover 240x240 -> JPEG <= MAX_BYTES
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  e.target.value = '';
-  raw = null; upd();
+  e.target.value = '';                       // supaya file yang sama bisa dipilih ulang
+  jpeg = null; upd();
   let bmp;
   try { bmp = await createImageBitmap(f); }
   catch { log('Format gambar tidak bisa dibaca browser ini (coba JPG/PNG).'); return; }
-  const s = Math.max(W / bmp.width, W / bmp.height);
+  const s = Math.max(240 / bmp.width, 240 / bmp.height);
   const w = bmp.width * s, h = bmp.height * s;
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, W);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(bmp, (W - w) / 2, (W - h) / 2, w, h);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 240, 240);
+  ctx.drawImage(bmp, (240 - w) / 2, (240 - h) / 2, w, h);
   if (bmp.close) bmp.close();
-  raw = toRgb565();
-  previewRgb565(raw);
-  log(`Siap: RGB565 ${raw.length} byte (${(raw.length / CHUNK | 0) + 1} paket)`);
+  for (let q = 0.92; q >= 0.3; q -= 0.06) {
+    const b = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
+    if (!b) continue;
+    const u = new Uint8Array(await b.arrayBuffer());
+    if (u.length <= MAX_BYTES) { jpeg = u; log(`JPEG ${(u.length/1024).toFixed(1)} KB (kualitas ${q.toFixed(2)})`); break; }
+  }
+  if (!jpeg) log('Gambar terlalu besar walau kualitas diturunkan.');
   upd();
 };
 
@@ -160,6 +137,8 @@ function waitStatus(ok, ms) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Mode "Andal": write dengan konfirmasi -> tiap paket dipastikan sampai sebelum paket berikutnya.
+// Mode "Cepat": tanpa konfirmasi + jeda kecil (bisa kehilangan paket jika ESP32 lambat).
 async function writePkt(pkt) {
   const p = dataC.properties;
   const useResp = $('mode').value === 'resp' ? (p.write || !p.writeWithoutResponse) : !p.writeWithoutResponse;
@@ -172,30 +151,29 @@ async function writePkt(pkt) {
 }
 
 $('send').onclick = async () => {
-  if (!dataC || !raw || raw.length !== RAW_BYTES) return;
+  if (!dataC || !jpeg) return;
   busy = true; upd();
   try {
     lastStatus = -1;
     const hdr = new Uint8Array(9); hdr[0] = 1;
     const dv = new DataView(hdr.buffer);
-    dv.setUint32(1, raw.length, true); dv.setUint32(5, crc32(raw), true);
+    dv.setUint32(1, jpeg.length, true); dv.setUint32(5, crc32(jpeg), true);
     let p = waitStatus([1], 4000);
     await dataC.writeValueWithResponse(hdr);
     await p;
 
     const t0 = performance.now();
-    for (let off = 0, seq = 0; off < raw.length; off += CHUNK, seq++) {
+    for (let off = 0, seq = 0; off < jpeg.length; off += CHUNK, seq++) {
       if (!dataC) throw new Error('koneksi terputus');
       if (ERR[lastStatus]) throw new Error(ERR[lastStatus] + ` (sekitar paket ${seq})`);
-      const part = raw.subarray(off, off + CHUNK);
+      const part = jpeg.subarray(off, off + CHUNK);
       const pkt = new Uint8Array(3 + part.length);
       pkt[0] = 2; pkt[1] = seq & 255; pkt[2] = seq >> 8; pkt.set(part, 3);
       await writePkt(pkt);
-      if (seq % 16 === 0) { $('bar').value = off / raw.length; log(`Mengirim… ${Math.round(off / raw.length * 100)}%`); }
+      if (seq % 8 === 0) { $('bar').value = off / jpeg.length; log(`Mengirim… ${Math.round(off / jpeg.length * 100)}%`); }
     }
     $('bar').value = 1;
-    log('Menyimpan di gantungan…');
-    p = waitStatus([2], 15000);       // ESP32 menulis 115 KB ke flash
+    p = waitStatus([2], 10000);
     await dataC.writeValueWithResponse(new Uint8Array([3]));
     await p;
     log(`Selesai ✔ (${((performance.now() - t0) / 1000).toFixed(1)} detik)`);
