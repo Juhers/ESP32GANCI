@@ -35,6 +35,14 @@
   <button id="send" disabled>Kirim ke gantungan</button>
   <button id="clear" class="s" disabled>Hapus gambar</button>
 </div>
+<div class="row">
+  <label style="font-size:.85rem">Mode kirim:
+    <select id="mode">
+      <option value="resp">Andal (disarankan)</option>
+      <option value="nr">Cepat (tanpa konfirmasi)</option>
+    </select>
+  </label>
+</div>
 <progress id="bar" value="0" max="1"></progress>
 <div id="log">Belum ada gambar.</div>
 
@@ -127,10 +135,17 @@ function waitStatus(ok, ms) {
   });
 }
 
-async function writeNR(pkt) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Mode "Andal": write dengan konfirmasi -> tiap paket dipastikan sampai sebelum paket berikutnya.
+// Mode "Cepat": tanpa konfirmasi + jeda kecil (bisa kehilangan paket jika ESP32 lambat).
+async function writePkt(pkt) {
+  const p = dataC.properties;
+  const useResp = $('mode').value === 'resp' ? (p.write || !p.writeWithoutResponse) : !p.writeWithoutResponse;
+  if (useResp) { await dataC.writeValueWithResponse(pkt); return; }
   for (let i = 0; i < 5; i++) {
-    try { await dataC.writeValueWithoutResponse(pkt); return; }
-    catch (e) { await new Promise(r => setTimeout(r, 15)); }
+    try { await dataC.writeValueWithoutResponse(pkt); await sleep(12); return; }
+    catch (e) { await sleep(20); }
   }
   throw new Error('Gagal menulis paket');
 }
@@ -150,10 +165,11 @@ $('send').onclick = async () => {
     const t0 = performance.now();
     for (let off = 0, seq = 0; off < jpeg.length; off += CHUNK, seq++) {
       if (!dataC) throw new Error('koneksi terputus');
+      if (ERR[lastStatus]) throw new Error(ERR[lastStatus] + ` (sekitar paket ${seq})`);
       const part = jpeg.subarray(off, off + CHUNK);
       const pkt = new Uint8Array(3 + part.length);
       pkt[0] = 2; pkt[1] = seq & 255; pkt[2] = seq >> 8; pkt.set(part, 3);
-      await writeNR(pkt);
+      await writePkt(pkt);
       if (seq % 8 === 0) { $('bar').value = off / jpeg.length; log(`Mengirim… ${Math.round(off / jpeg.length * 100)}%`); }
     }
     $('bar').value = 1;
