@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gantungan Musik – Kirim Gambar</title>
+<style>
+  :root{--bg:#fff;--fg:#1a1a1a;--card:#f1f1f1;--ac:#2a6df4;--mut:#666}
+  @media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#eee;--card:#1f1f1f;--ac:#6c9cff;--mut:#999}}
+  body{font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:420px;margin:0 auto;padding:16px}
+  h1{font-size:1.2rem;margin:0 0 4px}
+  p.m{color:var(--mut);font-size:.85rem;margin:0 0 12px}
+  canvas{width:240px;height:240px;border-radius:8px;background:#000;display:block;margin:12px auto}
+  .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+  button,label.b{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:.95rem;cursor:pointer}
+  button:disabled{opacity:.4;cursor:default}
+  button.s{background:var(--card);color:var(--fg)}
+  progress{width:100%;height:10px}
+  #log{background:var(--card);border-radius:8px;padding:10px;font-size:.85rem;min-height:1.4em;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Gantungan Musik – Kirim Gambar</h1>
+<p class="m">Gambar di-crop ke 240×240, dikompres JPEG, lalu dikirim lewat BLE. Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS), dibuka lewat HTTPS atau file lokal.</p>
+
+<canvas id="cv" width="240" height="240"></canvas>
+<div class="row">
+  <label class="b">Pilih gambar<input id="file" type="file" accept="image/*" hidden></label>
+  <button id="conn">Hubungkan</button>
+</div>
+<div class="row">
+  <button id="send" disabled>Kirim ke gantungan</button>
+  <button id="clear" class="s" disabled>Hapus gambar</button>
+</div>
+<progress id="bar" value="0" max="1"></progress>
+<div id="log">Belum ada gambar.</div>
+
+<script>
+const SVC  = '7a1c0001-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const DATA = '7a1c0002-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const STAT = '7a1c0003-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const MAX_BYTES = 48 * 1024;   // samakan dengan IMG_MAX_BYTES di Config.h
+const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
+const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM ESP32 kurang',
+             7:'LittleFS bermasalah',9:'timeout di ESP32',10:'JPEG tidak valid (harus baseline)'};
+
+const $ = id => document.getElementById(id);
+const log = t => $('log').textContent = t;
+const cv = $('cv'), ctx = cv.getContext('2d');
+let dev, dataC, statC, jpeg = null, lastStatus = -1, waiter = null;
+
+// ---- CRC32 (sama dengan ESP32)
+const T = new Uint32Array(256);
+for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[i] = c >>> 0; }
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
+
+function upd(){ $('send').disabled = !(dataC && jpeg); $('clear').disabled = !dataC; }
+
+// ---- pilih gambar -> crop cover 240x240 -> JPEG <= MAX_BYTES
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const bmp = await createImageBitmap(f);
+  const s = Math.max(240 / bmp.width, 240 / bmp.height);
+  const w = bmp.width * s, h = bmp.height * s;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 240, 240);
+  ctx.drawImage(bmp, (240 - w) / 2, (240 - h) / 2, w, h);
+  jpeg = null;
+  for (let q = 0.92; q >= 0.3; q -= 0.06) {
+    const b = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
+    const u = new Uint8Array(await b.arrayBuffer());
+    if (u.length <= MAX_BYTES) { jpeg = u; log(`JPEG ${(u.length/1024).toFixed(1)} KB (kualitas ${q.toFixed(2)})`); break; }
+  }
+  if (!jpeg) log('Gambar terlalu besar walau kualitas diturunkan.');
+  upd();
+};
+
+// ---- koneksi BLE
+$('conn').onclick = async () => {
+  try {
+    dev = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'Gantungan' }], optionalServices: [SVC] });
+    dev.addEventListener('gattserverdisconnected', () => { dataC = null; log('Terputus.'); upd(); });
+    const srv = await dev.gatt.connect();
+    const svc = await srv.getPrimaryService(SVC);
+    dataC = await svc.getCharacteristic(DATA);
+    statC = await svc.getCharacteristic(STAT);
+    await statC.startNotifications();
+    statC.addEventListener('characteristicvaluechanged', e => {
+      lastStatus = e.target.value.getUint8(0);
+      if (waiter) waiter();
+    });
+    log('Terhubung.'); upd();
+  } catch (e) { log('Gagal konek: ' + e.message); }
+};
+
+function waitStatus(ok, ms) {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => { waiter = null; rej(new Error('ESP32 tidak membalas')); }, ms);
+    waiter = () => {
+      if (ok.includes(lastStatus)) { clearTimeout(t); waiter = null; res(lastStatus); }
+      else if (ERR[lastStatus])    { clearTimeout(t); waiter = null; rej(new Error(ERR[lastStatus])); }
+    };
+    waiter();
+  });
+}
+
+async function writeNR(pkt) {
+  for (let i = 0; i < 5; i++) {
+    try { await dataC.writeValueWithoutResponse(pkt); return; }
+    catch (e) { await new Promise(r => setTimeout(r, 15)); }
+  }
+  throw new Error('Gagal menulis paket');
+}
+
+$('send').onclick = async () => {
+  if (!dataC || !jpeg) return;
+  $('send').disabled = true; $('clear').disabled = true;
+  try {
+    lastStatus = -1;
+    const hdr = new Uint8Array(9); hdr[0] = 1;
+    const dv = new DataView(hdr.buffer);
+    dv.setUint32(1, jpeg.length, true); dv.setUint32(5, crc32(jpeg), true);
+    let p = waitStatus([1], 4000);
+    await dataC.writeValueWithResponse(hdr);
+    await p;
+
+    const t0 = performance.now();
+    for (let off = 0, seq = 0; off < jpeg.length; off += CHUNK, seq++) {
+      const part = jpeg.subarray(off, off + CHUNK);
+      const pkt = new Uint8Array(3 + part.length);
+      pkt[0] = 2; pkt[1] = seq & 255; pkt[2] = seq >> 8; pkt.set(part, 3);
+      await writeNR(pkt);
+      if (seq % 8 === 0) { $('bar').value = off / jpeg.length; log(`Mengirim… ${Math.round(off / jpeg.length * 100)}%`); }
+    }
+    $('bar').value = 1;
+    p = waitStatus([2], 10000);
+    await dataC.writeValueWithResponse(new Uint8Array([3]));
+    await p;
+    log(`Selesai ✔ (${((performance.now() - t0) / 1000).toFixed(1)} detik)`);
+  } catch (e) { log('Gagal: ' + e.message); }
+  upd();
+};
+
+$('clear').onclick = async () => {
+  try {
+    lastStatus = -1;
+    const p = waitStatus([8], 4000);
+    await dataC.writeValueWithResponse(new Uint8Array([5]));
+    await p;
+    log('Gambar di gantungan dihapus.');
+  } catch (e) { log('Gagal: ' + e.message); }
+};
+</script>
+</body>
+</html>
