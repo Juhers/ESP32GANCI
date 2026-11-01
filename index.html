@@ -195,12 +195,15 @@
         <label>Batas ukuran GIF
           <select id="gMax"><option value="64" selected>64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option><option value="384">384 KB</option><option value="512">512 KB</option><option value="768">768 KB</option><option value="1024">1024 KB</option></select>
         </label>
+        <label>Ukuran GIF
+          <select id="gSize"><option value="240x240" selected>240 × 240 (layar penuh)</option><option value="240x160">240 × 160 (hemat ukuran)</option></select>
+        </label>
         <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
         <label>Durasi video
-          <select id="vDur"><option value="1">1 detik</option><option value="2" selected>2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
+          <select id="vDur"><option value="1" selected>1 detik</option><option value="2">2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
         </label>
         <label>Frame per detik
-          <select id="vFps"><option value="8">8</option><option value="10">10</option><option value="12" selected>12</option><option value="15">15</option><option value="20">20</option></select>
+          <select id="vFps"><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="20" selected>20</option><option value="25">25</option><option value="33">33</option></select>
         </label>
         <label>Prioritas
           <select id="vPrio"><option value="fps" selected>Gerakan mulus (warna dikurangi)</option><option value="col">Warna bagus (frame dijarangkan)</option></select>
@@ -232,10 +235,14 @@ const KIND_JPEG = 0, KIND_GIF = 1;
 let GIF_MAX = 64 * 1024;     // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
 const MAX_BYTES = 48 * 1024;   // HARUS sama dengan IMG_MAX_BYTES di Config.h (firmware)
 const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
-const OUT = 240;               // ukuran layar gantungan
+const OUT = 240;               // ukuran layar gantungan (foto JPEG selalu 240x240)
 const MAXZ = 6;                // zoom maksimum relatif terhadap "isi layar"
 const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM ESP32 kurang',
              7:'LittleFS bermasalah',9:'timeout di ESP32',10:'format file tidak valid (JPEG harus baseline / file harus GIF)'};
+
+// Ukuran GIF (bisa diubah di Pengaturan). Default 240x240 = layar penuh.
+// Pilih 240x160 hanya jika firmware menggambar GIF di area 240x160 (ukuran file lebih kecil -> FPS bisa naik).
+let GW = OUT, GH = OUT;
 
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
@@ -556,13 +563,15 @@ $('clear').onclick = async () => {
 };
 
 // ================= KOMPRESI GIF OTOMATIS (jika > GIF_MAX) =================
-// Alur: decode semua frame -> skala 240x240 (isi layar) -> palet global (median cut)
+// Alur: decode semua frame -> skala GW x GH (isi layar) -> palet global (median cut)
 //       -> encode ulang dengan delta antar-frame (piksel tak berubah = transparan) -> coba tingkat
 //       kompresi makin agresif sampai muat <= GIF_MAX.
 const GIF_MAXFR = 300;
 // [jumlah warna, toleransi warna antar-frame, ambil tiap N frame] dari kualitas terbaik ke terkecil
 const GIF_LADDER = [[255,0,1],[255,6,1],[127,8,1],[127,8,2],[63,12,2],[63,12,3],[31,16,3],[31,16,4],[15,24,4],[15,24,6],[15,32,8]];
-const LADDER_FPS = [[255,0,1],[255,6,1],[127,8,1],[63,10,1],[31,14,1],[31,18,1],[31,18,2]];   // frame penuh, warna turun
+// Prioritas "Gerakan mulus": SEMUA frame dipertahankan (step = 1); yang dikorbankan hanya warna.
+// Toleransi besar membuat lebih banyak piksel dianggap tidak berubah (transparan) -> frame delta jauh lebih kecil.
+const LADDER_FPS = [[127,4,1],[63,8,1],[63,12,1],[31,14,1],[31,20,1],[15,24,1],[15,32,1]];
 const LADDER_COL = [[255,0,1],[255,0,2],[255,4,2],[255,4,3],[127,8,3],[127,8,4],[63,12,4],[63,12,6]];  // warna tinggi, frame jarang
 const yieldUI = () => new Promise(r => setTimeout(r));
 
@@ -587,7 +596,7 @@ function lzwDec(mc, data, npix){
   return out;
 }
 
-// Decode GIF -> frame penuh, sudah di-skala ke OUT x OUT (cover, latar hitam)
+// Decode GIF -> frame penuh, sudah di-skala ke GW x GH (cover, latar hitam)
 async function decodeGif(u, onProg){
   const w = u[6] | u[7] << 8, h = u[8] | u[9] << 8, fl = u[10]; let p = 13;
   if (!w || !h) throw new Error('GIF rusak');
@@ -596,9 +605,9 @@ async function decodeGif(u, onProg){
   const cv0 = new Uint8ClampedArray(w * h * 4);
   const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
   const tx = tmp.getContext('2d');
-  const oc = document.createElement('canvas'); oc.width = oc.height = OUT;
+  const oc = document.createElement('canvas'); oc.width = GW; oc.height = GH;
   const ox = oc.getContext('2d', {willReadFrequently: true});
-  const s = Math.max(OUT / w, OUT / h), dw = w * s, dh = h * s;
+  const s = Math.max(GW / w, GH / h), dw = w * s, dh = h * s;
   const frames = []; let g = {disp: 0, tr: -1, delay: 10};
   while (p < u.length && frames.length < GIF_MAXFR) {
     const b = u[p++];
@@ -631,9 +640,9 @@ async function decodeGif(u, onProg){
         }
       }
       tx.putImageData(new ImageData(cv0, w, h), 0, 0);
-      ox.fillStyle = '#000'; ox.fillRect(0, 0, OUT, OUT); ox.imageSmoothingQuality = 'high';
-      ox.drawImage(tmp, (OUT - dw) / 2, (OUT - dh) / 2, dw, dh);
-      frames.push({px: ox.getImageData(0, 0, OUT, OUT).data, ms: g.delay * 10});
+      ox.fillStyle = '#000'; ox.fillRect(0, 0, GW, GH); ox.imageSmoothingQuality = 'high';
+      ox.drawImage(tmp, (GW - dw) / 2, (GH - dh) / 2, dw, dh);
+      frames.push({px: ox.getImageData(0, 0, GW, GH).data, ms: g.delay * 10});
       if (g.disp === 2) { for (let r = y; r < Math.min(h, y + ih); r++) cv0.fill(0, (r * w + x) * 4, (r * w + Math.min(w, x + iw)) * 4); }
       else if (bak) cv0.set(bak);
       g = {disp: 0, tr: -1, delay: 10};
@@ -727,15 +736,15 @@ function lzwEnc(idx, mc, out){
 function encodeGif(fr, step, n, tol, pal, lut){
   const k = Math.max(2, Math.ceil(Math.log2(n + 1))), tI = (1 << k) - 1, out = [];
   const w16 = v => out.push(v & 255, (v >> 8) & 255);
-  out.push(71, 73, 70, 56, 57, 97); w16(OUT); w16(OUT); out.push(0xF0 | (k - 1), 0, 0);
+  out.push(71, 73, 70, 56, 57, 97); w16(GW); w16(GH); out.push(0xF0 | (k - 1), 0, 0);
   for (let i = 0; i < (1 << k); i++) out.push(pal[i * 3] || 0, pal[i * 3 + 1] || 0, pal[i * 3 + 2] || 0);
   out.push(0x21, 0xFF, 11, ...'NETSCAPE2.0'.split('').map(c => c.charCodeAt(0)), 3, 1, 0, 0, 0);
-  const shown = new Int16Array(OUT * OUT).fill(-1), idx = new Uint8Array(OUT * OUT), t2 = tol * tol;
+  const shown = new Int16Array(GW * GH).fill(-1), idx = new Uint8Array(GW * GH), t2 = tol * tol;
   for (let f = 0; f < fr.length; f += step) {
     let ms = 0; for (let j = f; j < Math.min(fr.length, f + step); j++) ms += fr[j].ms;
-    const px = fr[f].px; let x0 = OUT, y0 = OUT, x1 = -1, y1 = -1;
-    for (let yy = 0; yy < OUT; yy++) for (let xx = 0; xx < OUT; xx++) {
-      const q = yy * OUT + xx, o = q * 4, c = lut[(px[o] >> 3) << 10 | (px[o + 1] >> 3) << 5 | px[o + 2] >> 3], s = shown[q];
+    const px = fr[f].px; let x0 = GW, y0 = GH, x1 = -1, y1 = -1;
+    for (let yy = 0; yy < GH; yy++) for (let xx = 0; xx < GW; xx++) {
+      const q = yy * GW + xx, o = q * 4, c = lut[(px[o] >> 3) << 10 | (px[o + 1] >> 3) << 5 | px[o + 2] >> 3], s = shown[q];
       let same = s === c;
       if (!same && s >= 0 && t2) { const dr = pal[s * 3] - pal[c * 3], dg = pal[s * 3 + 1] - pal[c * 3 + 1], db = pal[s * 3 + 2] - pal[c * 3 + 2]; same = dr * dr + dg * dg + db * db <= t2; }
       if (same) idx[q] = tI;
@@ -743,7 +752,7 @@ function encodeGif(fr, step, n, tol, pal, lut){
     }
     let rx = x0, ry = y0, rw = x1 - x0 + 1, rh = y1 - y0 + 1, sub;
     if (x1 < 0) { rx = ry = 0; rw = rh = 1; sub = new Uint8Array([tI]); }
-    else { sub = new Uint8Array(rw * rh); for (let r = 0; r < rh; r++) sub.set(idx.subarray((ry + r) * OUT + rx, (ry + r) * OUT + rx + rw), r * rw); }
+    else { sub = new Uint8Array(rw * rh); for (let r = 0; r < rh; r++) sub.set(idx.subarray((ry + r) * GW + rx, (ry + r) * GW + rx + rw), r * rw); }
     const cs = Math.min(65535, Math.max(2, Math.round(ms / 10)));
     out.push(0x21, 0xF9, 4, 0x05, cs & 255, cs >> 8, tI, 0, 0x2C); w16(rx); w16(ry); w16(rw); w16(rh); out.push(0, Math.max(2, k));
     lzwEnc(sub, Math.max(2, k), out);
@@ -807,7 +816,7 @@ function setGif(u, note){
   gifUrl = URL.createObjectURL(new Blob([u], {type: 'image/gif'}));
   $('gifPrev').src = gifUrl; $('gifPrev').hidden = false;
   $('gbar').value = 0;
-  glog(`GIF ${w}×${h} · ${kb} KB${note}` + (w !== OUT || h !== OUT ? ` — bukan ${OUT}×${OUT}, tidak akan fullscreen di layar.` : ' · siap dikirim.'));
+  glog(`GIF ${w}×${h} · ${kb} KB${note}` + (w !== GW || h !== GH ? ` — bukan ${GW}×${GH}, ukurannya tidak sesuai pengaturan dan mungkin tidak pas di layar.` : ' · siap dikirim.'));
   syncUI();
 }
 
@@ -845,21 +854,28 @@ async function grabFrames(v, start, dur, fps, say){
   if (!isFinite(total) || !v.videoWidth) throw new Error('video tidak valid');
   start = Math.min(Math.max(0, start), Math.max(0, total - 0.2));
   const n = Math.max(1, Math.min(Math.floor(Math.min(dur, total - start) * fps), GIF_MAXFR));
-  const c = document.createElement('canvas'); c.width = c.height = OUT;
+  const c = document.createElement('canvas'); c.width = GW; c.height = GH;
   const x = c.getContext('2d', {willReadFrequently: true});
   x.imageSmoothingQuality = 'high';
-  const sc = Math.max(OUT / v.videoWidth, OUT / v.videoHeight), dw = v.videoWidth * sc, dh = v.videoHeight * sc;
+  const sc = Math.max(GW / v.videoWidth, GH / v.videoHeight), dw = v.videoWidth * sc, dh = v.videoHeight * sc;
   const fr = [];
   for (let i = 0; i < n; i++) {
     say(`Mengambil frame… ${i + 1}/${n}`);
     await seekTo(v, start + i / fps);
-    x.fillStyle = '#000'; x.fillRect(0, 0, OUT, OUT);
-    x.drawImage(v, (OUT - dw) / 2, (OUT - dh) / 2, dw, dh);
-    fr.push({px: x.getImageData(0, 0, OUT, OUT).data, ms: 1000 / fps});
+    x.fillStyle = '#000'; x.fillRect(0, 0, GW, GH);
+    x.drawImage(v, (GW - dw) / 2, (GH - dh) / 2, dw, dh);
+    fr.push({px: x.getImageData(0, 0, GW, GH).data, ms: 1000 / fps});
   }
   return fr;
 }
 $('gMax').onchange = e => { GIF_MAX = +e.target.value * 1024; glog(`Batas GIF ${e.target.value} KB. Harus sama dengan GIF_MAX_BYTES di Config.h firmware.`); };
+$('gSize').onchange = e => {
+  const [w, h] = e.target.value.split('x').map(Number);
+  GW = w; GH = h;
+  gifData = null; $('gifPrev').hidden = true;
+  glog(`Ukuran GIF ${GW}×${GH}. Pilih ulang GIF/video. Pastikan firmware menggambar GIF dengan ukuran ini.`);
+  syncUI();
+};
 $('vidFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
