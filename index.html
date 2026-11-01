@@ -106,6 +106,11 @@
   .gifprev{display:block;width:100%;max-width:240px;aspect-ratio:1/1;object-fit:contain;background:#000;border-radius:8px;margin:0 auto 10px}
   .gifprev[hidden]{display:none}
   .btn.full{display:flex;width:100%;margin-top:8px}
+  .gedit{margin-bottom:12px}
+  .gscreen{max-width:360px;margin:0 auto 10px}
+  #gcv{width:100%;display:block;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;outline:none}
+  #gcv.grabbing{cursor:grabbing}
+  #gcv:focus-visible{box-shadow:0 0 0 3px var(--ac) inset}
   input[type=number]{font:inherit;font-size:.88rem;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:5.5em;text-align:right}
   .note{margin:16px 4px 0;color:var(--mut);font-size:.78rem}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -174,13 +179,32 @@
         <label>Garis bantu (sepertiga)
           <input id="grid" type="checkbox" checked>
         </label>
+        <label>Lanjutkan otomatis jika timeout / terputus (foto &amp; GIF)
+          <input id="auto" type="checkbox" checked>
+        </label>
       </div>
     </details>
   </section>
 
   <section class="panel" aria-label="Animasi GIF latar">
     <h2>Animasi GIF (latar layar musik)</h2>
-    <img id="gifPrev" class="gifprev" alt="Pratinjau GIF" hidden>
+    <div class="gedit" id="gedit" hidden>
+      <div class="screen gscreen">
+        <canvas id="gcv" tabindex="0" aria-label="Area tampilan GIF. Geser untuk memindahkan gambar, plus dan minus untuk zoom."></canvas>
+      </div>
+      <div class="zoomrow">
+        <button class="ico" id="gzout" type="button" aria-label="Perkecil" disabled>−</button>
+        <input id="gzoom" type="range" min="0" max="1000" value="0" aria-label="Zoom GIF" disabled>
+        <button class="ico" id="gzin" type="button" aria-label="Perbesar" disabled>+</button>
+        <output id="gzval">1,0×</output>
+      </div>
+      <div class="grid3">
+        <button id="gfill" type="button" disabled>Isi layar</button>
+        <button id="gfit" type="button" disabled>Muat semua</button>
+        <button id="gbuild" class="pri" type="button" disabled>Buat GIF</button>
+      </div>
+    </div>
+    <img id="gifPrev" class="gifprev" alt="Hasil GIF" hidden>
     <div class="grid3">
       <label class="btn" for="gifFile">Pilih GIF</label>
       <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
@@ -193,25 +217,25 @@
       <summary>Pengaturan GIF &amp; video</summary>
       <div class="set">
         <label>Batas ukuran GIF
-          <select id="gMax"><option value="64" selected>64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option><option value="384">384 KB</option><option value="512">512 KB</option><option value="768">768 KB</option><option value="1024">1024 KB</option></select>
+          <select id="gMax"><option value="64">64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option><option value="384">384 KB</option><option value="512" selected>512 KB</option><option value="768">768 KB</option><option value="1024">1024 KB</option></select>
         </label>
         <label>Ukuran GIF
           <select id="gSize"><option value="240x240" selected>240 × 240 (layar penuh)</option><option value="240x160">240 × 160 (hemat ukuran)</option></select>
         </label>
         <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
         <label>Durasi video
-          <select id="vDur"><option value="1" selected>1 detik</option><option value="2">2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
+          <select id="vDur"><option value="1">1 detik</option><option value="2">2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6" selected>6 detik</option></select>
         </label>
         <label>Frame per detik
-          <select id="vFps"><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="20" selected>20</option><option value="25">25</option><option value="33">33</option></select>
+          <select id="vFps"><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="20">20</option><option value="25">25</option><option value="33" selected>33</option></select>
         </label>
         <label>Prioritas
-          <select id="vPrio"><option value="fps" selected>Gerakan mulus (warna dikurangi)</option><option value="col">Warna bagus (frame dijarangkan)</option></select>
+          <select id="vPrio"><option value="fps">Gerakan mulus (warna dikurangi)</option><option value="col" selected>Warna bagus (frame dijarangkan)</option></select>
         </label>
       </div>
     </details>
     <progress id="gbar" value="0" max="1"></progress>
-    <div id="glog" role="status">GIF 240 × 240 piksel. Jika lebih dari batas ukuran (Pengaturan, default 64 KB), dikompres otomatis (di-crop mengisi layar). Video dari galeri juga bisa diubah jadi GIF.</div>
+    <div id="glog" role="status">Pilih GIF atau video, atur bagian yang tampil (geser, cubit atau gulir untuk zoom), lalu tekan "Buat GIF". Hasil yang melebihi batas ukuran dikompres otomatis.</div>
   </section>
 
   <p class="note">Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak mendukung Web Bluetooth.</p>
@@ -226,19 +250,35 @@
  *   [01][size u32][crc32 u32][jenis u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar)
  *   [02][seq u16][payload<=100B]         DATA
  *   [03] END   [04] ABORT   [05][jenis u8] CLEAR
- * Status (notify): 1 menerima, 2 OK, 8 terhapus, 3-7/9/10 = error (lihat tabel ERR).
+ *   [06][size u32][crc32 u32][jenis u8]  RESUME  (tanya: sudah berapa byte yang diterima untuk file ini?)
+ * Status (notify): 1 menerima, 2 OK, 8 terhapus, 3-7/9/10 = error (lihat tabel ERR),
+ *   11 = balasan RESUME, 5 byte: [11][byte_diterima u32]. 0 = mulai dari awal.
+ *
+ * Lanjut saat timeout/putus:
+ *   - Firmware BARU (mendukung RESUME): setelah sambung ulang, pengiriman dilanjutkan dari byte terakhir.
+ *   - Firmware LAMA (tanpa RESUME): otomatis dicoba ulang dari awal (RESUME dianggap tidak didukung).
  */
 const SVC  = '7a1c0001-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const DATA = '7a1c0002-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const STAT = '7a1c0003-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const KIND_JPEG = 0, KIND_GIF = 1;
-let GIF_MAX = 64 * 1024;     // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
+let GIF_MAX = 512 * 1024;    // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
 const MAX_BYTES = 48 * 1024;   // HARUS sama dengan IMG_MAX_BYTES di Config.h (firmware)
 const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
 const OUT = 240;               // ukuran layar gantungan (foto JPEG selalu 240x240)
 const MAXZ = 6;                // zoom maksimum relatif terhadap "isi layar"
 const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM ESP32 kurang',
              7:'LittleFS bermasalah',9:'timeout di ESP32',10:'format file tidak valid (JPEG harus baseline / file harus GIF)'};
+const FATAL = new Set([3, 6, 7, 10]);   // error yang tidak ada gunanya diulang
+const MAX_RETRY = 5;                    // maksimum percobaan lanjut per pengiriman
+// Error dengan penanda: fatal (jangan diulang), code (status ESP32), timeout (perlu sambung ulang)
+function mkErr(msg, fatal = false, code = 0, timeout = false){
+  const e = new Error(msg); e.fatal = fatal; e.code = code; e.timeout = timeout; return e;
+}
+const withTimeout = (p, ms, msg) => new Promise((res, rej) => {
+  const t = setTimeout(() => rej(mkErr(msg, false, 0, true)), ms);
+  p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); });
+});
 
 // Ukuran GIF (bisa diubah di Pengaturan). Default 240x240 = layar penuh.
 // Pilih 240x160 hanya jika firmware menggambar GIF di area 240x160 (ukuran file lebih kecil -> FPS bisa naik).
@@ -307,6 +347,7 @@ function syncUI(){
   $('clear').disabled = busy || !dataC;
   $('gifSend').disabled = busy || !(dataC && gifData);
   $('gifClear').disabled = busy || !dataC;
+  $('gbuild').disabled = busy || !gsrc;
   $('conn').disabled = busy || !btOK;
 }
 
@@ -394,7 +435,7 @@ $('rot').onclick = () => {
   if (src.close) src.close();
   src = c; zoom = 1; nx = ny = .5; changed();
 };
-$('grid').onchange = draw;
+$('grid').onchange = () => { draw(); gDraw(); };
 $('empty').onclick = () => $('file').click();
 
 // ---- muat foto (dari input atau seret-lepas)
@@ -459,21 +500,27 @@ function setChip(on, name){
   $('conn').textContent = on ? 'Putuskan' : 'Hubungkan';
 }
 
-function onNotify(e){ lastStatus = e.target.value.getUint8(0); if (waiter) waiter(); }
+let lastOff = 0;   // byte yang sudah diterima ESP32 (dari balasan status 11)
+function onNotify(e){
+  const v = e.target.value;
+  lastOff = v.byteLength >= 5 ? v.getUint32(1, true) : 0;
+  lastStatus = v.getUint8(0);
+  if (waiter) waiter();
+}
 
 $('conn').onclick = async () => {
   if (!btOK) return;
   if (dev && dev.gatt.connected) { dev.gatt.disconnect(); return; }
   try {
     dev = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'Gantungan' }], optionalServices: [SVC] });
-    dev.addEventListener('gattserverdisconnected', () => { dataC = null; statC = null; setChip(false); log('Koneksi terputus.'); syncUI(); });
+    dev.addEventListener('gattserverdisconnected', () => {
+      dataC = null; statC = null; setChip(false);
+      if (rejectWait) rejectWait(mkErr('koneksi terputus'));   // hentikan penantian status segera
+      if (!busy) log('Koneksi terputus.');                      // saat transfer, pesan diurus logika lanjut
+      syncUI();
+    });
     log('Menghubungkan…');
-    const srv = await dev.gatt.connect();
-    const svc = await srv.getPrimaryService(SVC);
-    dataC = await svc.getCharacteristic(DATA);
-    statC = await svc.getCharacteristic(STAT);
-    statC.addEventListener('characteristicvaluechanged', onNotify);
-    await statC.startNotifications();
+    await attach(await dev.gatt.connect());
     setChip(true, dev.name || 'Gantungan');
     log(src ? 'Terhubung. Siap mengirim.' : 'Terhubung. Pilih foto, lalu kirim.', 'ok');
     syncUI();
@@ -482,16 +529,26 @@ $('conn').onclick = async () => {
   }
 };
 
+let rejectWait = null;
 function waitStatus(ok, ms){
+  if (rejectWait) rejectWait(mkErr('menunggu dibatalkan'));   // hanya satu penantian aktif
   return new Promise((res, rej) => {
-    const t = setTimeout(() => { waiter = null; rej(new Error('ESP32 tidak membalas')); }, ms);
-    waiter = () => {
-      if (ok.includes(lastStatus)) { clearTimeout(t); waiter = null; res(lastStatus); }
-      else if (ERR[lastStatus])    { clearTimeout(t); waiter = null; rej(new Error(ERR[lastStatus])); }
+    let t, w, rw;
+    const done = () => { clearTimeout(t); if (waiter === w) waiter = null; if (rejectWait === rw) rejectWait = null; };
+    t = setTimeout(() => { done(); rej(mkErr('ESP32 tidak membalas', false, 0, true)); }, ms);
+    rw = e => { done(); rej(e); };
+    w = () => {
+      if (ok.includes(lastStatus)) { done(); res(lastStatus); }
+      else if (ERR[lastStatus])    { done(); rej(mkErr(ERR[lastStatus], FATAL.has(lastStatus), lastStatus)); }
     };
-    waiter();
+    rejectWait = rw; waiter = w;
+    w();
   });
 }
+// Versi yang rejection-nya tidak "unhandled" kalau kita keburu keluar karena error lain.
+const arm = (ok, ms) => { const p = waitStatus(ok, ms); p.catch(() => {}); return p; };
+const wr = (v, ms = 8000, msg = 'timeout menulis ke ESP32') =>
+  dataC ? withTimeout(dataC.writeValueWithResponse(v), ms, msg) : Promise.reject(mkErr('koneksi terputus'));
 
 // Mode "Andal": write dengan konfirmasi -> tiap paket dipastikan sampai sebelum paket berikutnya.
 // Mode "Cepat": tanpa konfirmasi + jeda kecil (bisa kehilangan paket jika ESP32 lambat).
@@ -506,31 +563,104 @@ async function writePkt(pkt){
   throw new Error('Gagal menulis paket');
 }
 
-// Kirim satu file (kind: KIND_JPEG / KIND_GIF). bar = <progress>, say = fungsi pesan. Return: detik.
-async function transfer(kind, data, bar, say){
-  lastStatus = -1;
-  const hdr = new Uint8Array(10); hdr[0] = 1; hdr[9] = kind;
-  const dv = new DataView(hdr.buffer);
-  dv.setUint32(1, data.length, true); dv.setUint32(5, crc32(data), true);
-  let p = waitStatus([1], 4000);
-  await dataC.writeValueWithResponse(hdr);
-  await p;
+// ---- sambung ulang tanpa dialog pilih perangkat (perangkat sama)
+async function attach(srv){
+  const svc = await srv.getPrimaryService(SVC);
+  dataC = await svc.getCharacteristic(DATA);
+  statC = await svc.getCharacteristic(STAT);
+  statC.addEventListener('characteristicvaluechanged', onNotify);
+  await statC.startNotifications();
+}
+async function reconnect(say){
+  let last = null;
+  for (let i = 0; i < 4; i++) {
+    try {
+      say(`Menyambung ulang… (${i + 1}/4)`);
+      await attach(await withTimeout(dev.gatt.connect(), 10000, 'timeout menyambung'));
+      setChip(true, dev.name || 'Gantungan');
+      return;
+    } catch (e) {
+      last = e; dataC = null; statC = null;
+      try { dev.gatt.disconnect(); } catch {}
+      await sleep(1000 * (i + 1));
+    }
+  }
+  throw mkErr('gagal menyambung ulang' + (last ? ': ' + last.message : ''), true);
+}
 
-  const t0 = performance.now();
-  for (let off = 0, seq = 0; off < data.length; off += CHUNK, seq++) {
-    if (!dataC) throw new Error('koneksi terputus');
-    if (ERR[lastStatus]) throw new Error(ERR[lastStatus] + ` (sekitar paket ${seq})`);
+// ---- mulai / lanjutkan. Return: offset (byte) tempat pengiriman DATA dimulai.
+// null = belum diketahui, true = firmware mendukung RESUME, false = firmware lama (selalu mulai dari awal)
+let resumeSupported = null;
+async function begin(kind, data, crc, fresh){
+  const hdr = new Uint8Array(10); hdr[9] = kind;
+  const dv = new DataView(hdr.buffer);
+  dv.setUint32(1, data.length, true); dv.setUint32(5, crc, true);
+
+  if (!fresh && resumeSupported !== false) {
+    hdr[0] = 6; lastStatus = -1;
+    try {
+      const q = arm([11], resumeSupported ? 4000 : 2500);
+      await wr(hdr, 8000, 'timeout menulis perintah lanjut');
+      await q;
+      resumeSupported = true;
+      let off = lastOff;
+      if (off !== data.length && (off % CHUNK !== 0 || off > data.length)) off = 0;
+      if (off > 0) return off;            // ESP32 sudah punya sebagian -> lanjut, tanpa START
+    } catch (e) {
+      if (!dataC) throw e;                // putus beneran -> serahkan ke logika sambung ulang
+      if (resumeSupported === true) throw e;
+      resumeSupported = false;            // tidak ada balasan = firmware lama
+    }
+  }
+  hdr[0] = 1; lastStatus = -1;
+  const p = arm([1], 4000);
+  await wr(hdr, 8000, 'timeout menulis header');
+  await p;
+  return 0;
+}
+
+async function sendFrom(data, start, bar, say){
+  for (let off = start, seq = start / CHUNK; off < data.length; off += CHUNK, seq++) {
+    if (!dataC) throw mkErr('koneksi terputus');
+    if (ERR[lastStatus]) throw mkErr(ERR[lastStatus] + ` (sekitar paket ${seq})`, FATAL.has(lastStatus), lastStatus);
     const part = data.subarray(off, off + CHUNK);
     const pkt = new Uint8Array(3 + part.length);
     pkt[0] = 2; pkt[1] = seq & 255; pkt[2] = seq >> 8; pkt.set(part, 3);
-    await writePkt(pkt);
+    await withTimeout(writePkt(pkt), 10000, 'timeout menulis paket');
     if (seq % 8 === 0) { bar.value = off / data.length; say(`Mengirim… ${Math.round(off / data.length * 100)}%`); }
   }
-  bar.value = 1;
-  p = waitStatus([2], 15000);          // ESP32 memverifikasi CRC lalu menulis ke flash
-  await dataC.writeValueWithResponse(new Uint8Array([3]));
-  await p;
-  return (performance.now() - t0) / 1000;
+}
+
+// Kirim satu file (kind: KIND_JPEG / KIND_GIF). bar = <progress>, say = fungsi pesan. Return: detik.
+// Jika timeout / putus: sambung ulang lalu lanjut (atau ulang dari awal untuk firmware lama), maks MAX_RETRY kali.
+async function transfer(kind, data, bar, say){
+  const crc = crc32(data), t0 = performance.now();
+  let tries = 0, fresh = false;
+  for (;;) {
+    try {
+      if (!dataC) await reconnect(say);
+      const off = await begin(kind, data, crc, fresh);
+      fresh = false;
+      if (off > 0) { bar.value = off / data.length; say(`Melanjutkan dari ${Math.round(off / data.length * 100)}%…`); }
+      await sendFrom(data, off, bar, say);
+      bar.value = 1;
+      lastStatus = -1;
+      const p = arm([2], 15000);          // ESP32 memverifikasi CRC lalu menulis ke flash
+      await wr(new Uint8Array([3]), 8000, 'timeout menulis penutup');
+      await p;
+      return (performance.now() - t0) / 1000;
+    } catch (e) {
+      if (e.fatal || !$('auto').checked) throw e;
+      if (++tries > MAX_RETRY) {
+        if (resumeSupported) e.message += ' (tekan Kirim lagi untuk melanjutkan)';
+        throw e;
+      }
+      if (e.code === 4 || e.code === 5) fresh = true;   // data di ESP32 tidak bisa dipercaya -> ulang dari awal
+      say(`${e.message}. Mencoba lanjut (${tries}/${MAX_RETRY})…`);
+      if (e.timeout && dev && dev.gatt.connected) { try { dev.gatt.disconnect(); } catch {} }   // paksa sambung ulang
+      await sleep(800 * tries);
+    }
+  }
 }
 
 async function clearOnDevice(kind){
@@ -597,7 +727,7 @@ function lzwDec(mc, data, npix){
 }
 
 // Decode GIF -> frame penuh, sudah di-skala ke GW x GH (cover, latar hitam)
-async function decodeGif(u, onProg){
+async function decodeGif(u, onProg, tf = {z: 1, x: .5, y: .5}){
   const w = u[6] | u[7] << 8, h = u[8] | u[9] << 8, fl = u[10]; let p = 13;
   if (!w || !h) throw new Error('GIF rusak');
   let gct = null;
@@ -607,7 +737,7 @@ async function decodeGif(u, onProg){
   const tx = tmp.getContext('2d');
   const oc = document.createElement('canvas'); oc.width = GW; oc.height = GH;
   const ox = oc.getContext('2d', {willReadFrequently: true});
-  const s = Math.max(GW / w, GH / h), dw = w * s, dh = h * s;
+  const s = Math.max(GW / w, GH / h) * tf.z, dw = w * s, dh = h * s;
   const frames = []; let g = {disp: 0, tr: -1, delay: 10};
   while (p < u.length && frames.length < GIF_MAXFR) {
     const b = u[p++];
@@ -641,7 +771,7 @@ async function decodeGif(u, onProg){
       }
       tx.putImageData(new ImageData(cv0, w, h), 0, 0);
       ox.fillStyle = '#000'; ox.fillRect(0, 0, GW, GH); ox.imageSmoothingQuality = 'high';
-      ox.drawImage(tmp, (GW - dw) / 2, (GH - dh) / 2, dw, dh);
+      ox.drawImage(tmp, tf.x * GW - dw / 2, tf.y * GH - dh / 2, dw, dh);
       frames.push({px: ox.getImageData(0, 0, GW, GH).data, ms: g.delay * 10});
       if (g.disp === 2) { for (let r = y; r < Math.min(h, y + ih); r++) cv0.fill(0, (r * w + x) * 4, (r * w + Math.min(w, x + iw)) * 4); }
       else if (bak) cv0.set(bak);
@@ -762,8 +892,8 @@ function encodeGif(fr, step, n, tol, pal, lut){
   return out.length > GIF_MAX ? null : Uint8Array.from(out);
 }
 
-async function optimizeGif(u, say){
-  return optimizeFrames(await decodeGif(u, n => say(`Membaca frame… ${n}`)), say);
+async function optimizeGif(u, say, tf){
+  return optimizeFrames(await decodeGif(u, n => say(`Membaca frame… ${n}`), tf), say);
 }
 async function optimizeFrames(all, say, ladder = GIF_LADDER, trim = false){
   if (!all.length) throw new Error('tidak ada frame');
@@ -790,22 +920,19 @@ let gifData = null, gifUrl = null;
 $('gifFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
-  let u = new Uint8Array(await f.arrayBuffer());
+  const u = new Uint8Array(await f.arrayBuffer());
   const sig = String.fromCharCode(...u.subarray(0, 6));
-  gifData = null; $('gifPrev').hidden = true;
-  if (sig !== 'GIF87a' && sig !== 'GIF89a') { glog('Bukan file GIF.', 'bad'); syncUI(); return; }
-  const kb0 = (u.length / 1024).toFixed(1); let note = '';
-  if (u.length > GIF_MAX) {
-    busy = true; syncUI(); $('gbar').removeAttribute('value');   // progress tak tentu
-    let r = null;
-    try { r = await optimizeGif(u, glog); }
-    catch (err) { busy = false; $('gbar').value = 0; glog('Gagal memproses GIF: ' + err.message, 'bad'); syncUI(); return; }
-    busy = false; $('gbar').value = 0;
-    if (!r) { glog(`GIF ${kb0} KB tidak bisa dikecilkan sampai ${GIF_MAX / 1024} KB. Pakai GIF yang lebih pendek (frame lebih sedikit).`, 'bad'); syncUI(); return; }
-    u = r.data;
-    note = ` · dikompres dari ${kb0} KB (${r.n} warna, ${r.frames} dari ${r.src} frame${r.cut ? `; hanya ${GIF_MAXFR} frame pertama dibaca` : ''})`;
+  if (sig !== 'GIF87a' && sig !== 'GIF89a') { glog('Bukan file GIF.', 'bad'); return; }
+  const blob = new Blob([u], {type: 'image/gif'});
+  let draw = null, url = null;
+  try { draw = await createImageBitmap(blob); }          // frame pertama sebagai bahan tampilan editor
+  catch {
+    try { url = URL.createObjectURL(blob); draw = new Image(); draw.src = url; await draw.decode(); }
+    catch { if (url) URL.revokeObjectURL(url); glog('GIF tidak bisa dibaca browser ini.', 'bad'); return; }
   }
-  setGif(u, note);
+  const w = draw.naturalWidth || draw.width, h = draw.naturalHeight || draw.height;
+  gSetSource({kind: 'gif', draw, w, h, bytes: u, url});
+  glog(`GIF ${w}×${h} · ${(u.length / 1024).toFixed(1)} KB dimuat. Atur bagian yang tampil, lalu tekan "Buat GIF".`);
 };
 
 function setGif(u, note){
@@ -820,14 +947,145 @@ function setGif(u, note){
   syncUI();
 }
 
-// ---- video dari galeri -> frame -> kompres -> GIF
+// ================= EDITOR TAMPILAN GIF / VIDEO (geser & zoom seperti editor foto) =================
+// Posisi (gx,gy) = pusat gambar, dinormalisasi terhadap area GW x GH; zoom 1 = "isi layar" (cover).
+const gcv = $('gcv'), gctx = gcv.getContext('2d');
+const GMAXZ = 6;
+let gsrc = null;                 // {kind:'gif'|'video', draw, w, h, bytes?, video?, url?}
+let gz = 1, gx = .5, gy = .5, gV = 320;
+const gHpx = () => gV * GH / GW;
+const gBase = () => Math.max(GW / gsrc.w, GH / gsrc.h);
+const gMinZoom = () => Math.min(GW / gsrc.w, GH / gsrc.h) / gBase();
+
+function gClamp(){
+  gz = Math.min(GMAXZ, Math.max(gMinZoom(), gz));
+  const b = gBase() * gz;
+  gx = clampAxis(gx, gsrc.w * b / GW);
+  gy = clampAxis(gy, gsrc.h * b / GH);
+}
+function gRender(c, W, H){
+  const b = Math.max(W / gsrc.w, H / gsrc.h) * gz, dw = gsrc.w * b, dh = gsrc.h * b;
+  c.drawImage(gsrc.draw, gx * W - dw / 2, gy * H - dh / 2, dw, dh);
+}
+function gDraw(){
+  gctx.setTransform(1, 0, 0, 1, 0, 0);
+  gctx.fillStyle = '#000'; gctx.fillRect(0, 0, gcv.width, gcv.height);
+  if (!gsrc) return;
+  gctx.imageSmoothingEnabled = true; gctx.imageSmoothingQuality = 'high';
+  try { gRender(gctx, gcv.width, gcv.height); } catch {}
+  if ($('grid').checked) {
+    const W = gcv.width, H = gcv.height;
+    gctx.strokeStyle = 'rgba(255,255,255,.32)'; gctx.lineWidth = Math.max(1, dpr * .8);
+    gctx.beginPath();
+    for (let i = 1; i < 3; i++) { gctx.moveTo(W * i / 3, 0); gctx.lineTo(W * i / 3, H); gctx.moveTo(0, H * i / 3); gctx.lineTo(W, H * i / 3); }
+    gctx.stroke();
+  }
+}
+function gSync(){
+  const has = !!gsrc;
+  ['gzoom','gzin','gzout','gfill','gfit'].forEach(i => $(i).disabled = !has);
+  if (has) {
+    const mz = gMinZoom();
+    $('gzoom').value = mz >= GMAXZ ? 0 : Math.round(Math.log(gz / mz) / Math.log(GMAXZ / mz) * 1000);
+    $('gzval').textContent = fmtZ(gz);
+  }
+}
+function gChanged(){ if (!gsrc) return; gClamp(); gDraw(); gSync(); }
+function gZoomAt(z, px, py){
+  const mz = gMinZoom(); z = Math.min(GMAXZ, Math.max(mz, z));
+  const r = z / gz;
+  gx = px + (gx - px) * r; gy = py + (gy - py) * r; gz = z;
+}
+function gLayout(){
+  gcv.style.aspectRatio = GW + ' / ' + GH;
+  gV = gcv.clientWidth || 320;
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  gcv.width = Math.round(gV * d); gcv.height = Math.round(gV * d * GH / GW);
+  if (gsrc) gClamp();
+  gDraw();
+}
+new ResizeObserver(() => { if (!$('gedit').hidden) gLayout(); }).observe(gcv);
+
+// ---- gestur: geser, cubit, gulir, keyboard
+const gptr = new Map();
+gcv.addEventListener('pointerdown', e => {
+  if (!gsrc) return;
+  gcv.setPointerCapture(e.pointerId); gcv.classList.add('grabbing');
+  gptr.set(e.pointerId, {x: e.clientX, y: e.clientY});
+});
+gcv.addEventListener('pointermove', e => {
+  const prev = gptr.get(e.pointerId); if (!prev || !gsrc) return;
+  const cur = {x: e.clientX, y: e.clientY};
+  if (gptr.size === 1) {
+    gx += (cur.x - prev.x) / gV; gy += (cur.y - prev.y) / gHpx();
+  } else if (gptr.size === 2) {
+    const other = [...gptr.entries()].find(([id]) => id !== e.pointerId)[1];
+    const d0 = Math.hypot(prev.x - other.x, prev.y - other.y) || 1;
+    const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+    const rc = gcv.getBoundingClientRect();
+    const m0x = (prev.x + other.x) / 2, m0y = (prev.y + other.y) / 2;
+    const m1x = (cur.x + other.x) / 2,  m1y = (cur.y + other.y) / 2;
+    gx += (m1x - m0x) / gV; gy += (m1y - m0y) / gHpx();
+    gZoomAt(gz * d1 / d0, (m1x - rc.left) / gV, (m1y - rc.top) / gHpx());
+  }
+  gptr.set(e.pointerId, cur);
+  gChanged();
+});
+const gEndPtr = e => { gptr.delete(e.pointerId); if (!gptr.size) gcv.classList.remove('grabbing'); };
+gcv.addEventListener('pointerup', gEndPtr);
+gcv.addEventListener('pointercancel', gEndPtr);
+gcv.addEventListener('wheel', e => {
+  if (!gsrc) return; e.preventDefault();
+  const rc = gcv.getBoundingClientRect();
+  gZoomAt(gz * Math.exp(-e.deltaY * .0015), (e.clientX - rc.left) / gV, (e.clientY - rc.top) / gHpx());
+  gChanged();
+}, {passive: false});
+gcv.addEventListener('keydown', e => {
+  if (!gsrc) return;
+  const st = .02; let h = true;
+  if (e.key === 'ArrowLeft') gx -= st; else if (e.key === 'ArrowRight') gx += st;
+  else if (e.key === 'ArrowUp') gy -= st; else if (e.key === 'ArrowDown') gy += st;
+  else if (e.key === '+' || e.key === '=') gZoomAt(gz * 1.1, .5, .5);
+  else if (e.key === '-') gZoomAt(gz / 1.1, .5, .5);
+  else h = false;
+  if (h) { e.preventDefault(); gChanged(); }
+});
+
+// ---- kontrol
+$('gzoom').oninput = e => {
+  const mz = gMinZoom();
+  gZoomAt(mz * Math.pow(GMAXZ / mz, e.target.value / 1000), .5, .5);
+  gChanged();
+};
+$('gzin').onclick  = () => { gZoomAt(gz * 1.15, .5, .5); gChanged(); };
+$('gzout').onclick = () => { gZoomAt(gz / 1.15, .5, .5); gChanged(); };
+$('gfill').onclick = () => { gz = 1; gx = gy = .5; gChanged(); };
+$('gfit').onclick  = () => { gz = gMinZoom(); gx = gy = .5; gChanged(); };
+
+// ---- sumber editor (GIF atau video)
+function gRelease(){
+  if (!gsrc) return;
+  if (gsrc.video) { gsrc.video.remove(); gsrc.video.removeAttribute('src'); gsrc.video.load(); }
+  if (gsrc.url) URL.revokeObjectURL(gsrc.url);
+  if (gsrc.draw && gsrc.draw.close) gsrc.draw.close();
+  gsrc = null;
+}
+function gSetSource(sc){
+  gRelease();
+  gsrc = sc; gz = 1; gx = gy = .5;
+  gifData = null; $('gifPrev').hidden = true; $('gbar').value = 0;
+  $('gedit').hidden = false;
+  gLayout(); gSync(); syncUI();
+}
+
+// ---- video dari galeri
 const seekTo = (v, t) => new Promise((res, rej) => {
   if (Math.abs(v.currentTime - t) < 0.001) { res(); return; }
   const to = setTimeout(() => rej(new Error('video macet saat mengambil frame')), 6000);
   v.onseeked = () => { clearTimeout(to); res(); };
   v.currentTime = t;
 });
-async function videoFrames(url, start, dur, fps, say){
+async function openVideo(url){
   const v = document.createElement('video');
   // iOS (WebKit/Bluefy) hanya memuat video yang ada di halaman, bersuara-mati, dan ber-atribut playsinline
   v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.setAttribute('preload', 'auto');
@@ -846,10 +1104,20 @@ async function videoFrames(url, start, dur, fps, say){
       }, 100);
     });
     v.pause();
-    return await grabFrames(v, start, dur, fps, say);
-  } finally { v.remove(); v.removeAttribute('src'); v.load(); }
+    return v;
+  } catch (err) { v.remove(); v.removeAttribute('src'); v.load(); throw err; }
 }
-async function grabFrames(v, start, dur, fps, say){
+// Tampilkan frame di detik "Mulai dari" sebagai bahan pratinjau editor
+async function gSeekPreview(){
+  if (!gsrc || !gsrc.video) return;
+  const v = gsrc.video, total = v.duration;
+  if (!isFinite(total)) return;
+  await seekTo(v, Math.min(Math.max(0, +$('vStart').value || 0), Math.max(0, total - 0.2)));
+  gDraw();
+}
+$('vStart').onchange = () => { gSeekPreview().catch(() => {}); };
+
+async function grabFrames(v, start, dur, fps, say, tf){
   const total = v.duration;
   if (!isFinite(total) || !v.videoWidth) throw new Error('video tidak valid');
   start = Math.min(Math.max(0, start), Math.max(0, total - 0.2));
@@ -857,25 +1125,28 @@ async function grabFrames(v, start, dur, fps, say){
   const c = document.createElement('canvas'); c.width = GW; c.height = GH;
   const x = c.getContext('2d', {willReadFrequently: true});
   x.imageSmoothingQuality = 'high';
-  const sc = Math.max(GW / v.videoWidth, GH / v.videoHeight), dw = v.videoWidth * sc, dh = v.videoHeight * sc;
+  const sc = Math.max(GW / v.videoWidth, GH / v.videoHeight) * tf.z, dw = v.videoWidth * sc, dh = v.videoHeight * sc;
   const fr = [];
   for (let i = 0; i < n; i++) {
     say(`Mengambil frame… ${i + 1}/${n}`);
     await seekTo(v, start + i / fps);
     x.fillStyle = '#000'; x.fillRect(0, 0, GW, GH);
-    x.drawImage(v, (GW - dw) / 2, (GH - dh) / 2, dw, dh);
+    x.drawImage(v, tf.x * GW - dw / 2, tf.y * GH - dh / 2, dw, dh);
     fr.push({px: x.getImageData(0, 0, GW, GH).data, ms: 1000 / fps});
   }
   return fr;
 }
-$('gMax').onchange = e => { GIF_MAX = +e.target.value * 1024; glog(`Batas GIF ${e.target.value} KB. Harus sama dengan GIF_MAX_BYTES di Config.h firmware.`); };
+
+$('gMax').onchange = e => { GIF_MAX = +e.target.value * 1024; glog(`Batas GIF ${e.target.value} KB. Harus sama dengan GIF_MAX_BYTES di Config.h firmware. Tekan "Buat GIF" lagi.`); };
 $('gSize').onchange = e => {
   const [w, h] = e.target.value.split('x').map(Number);
   GW = w; GH = h;
   gifData = null; $('gifPrev').hidden = true;
-  glog(`Ukuran GIF ${GW}×${GH}. Pilih ulang GIF/video. Pastikan firmware menggambar GIF dengan ukuran ini.`);
+  if (gsrc) { gz = 1; gx = gy = .5; gLayout(); gChanged(); }
+  glog(`Ukuran GIF ${GW}×${GH}. Atur tampilan, lalu tekan "Buat GIF" lagi. Pastikan firmware menggambar GIF dengan ukuran ini.`);
   syncUI();
 };
+
 $('vidFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -883,13 +1154,41 @@ $('vidFile').onchange = async e => {
   const url = URL.createObjectURL(f);
   glog('Memuat video…');
   try {
-    const fps = +$('vFps').value, dur = +$('vDur').value;
-    const fr = await videoFrames(url, Math.max(0, +$('vStart').value || 0), dur, fps, glog);
-    const r = await optimizeFrames(fr, glog, $('vPrio').value === 'fps' ? LADDER_FPS : LADDER_COL, true);
-    if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; naikkan batas ukuran atau kurangi durasi`);
-    setGif(r.data, ` · dari video (${r.n} warna, ${r.frames} frame${r.kept < r.src ? `, durasi dipotong ${Math.round(r.kept / r.src * 100)}%` : ''}, ±${(r.frames / (r.kept / fps)).toFixed(0)} fps)`);
-  } catch (err) { glog('Gagal mengubah video: ' + err.message, 'bad'); }
-  URL.revokeObjectURL(url); busy = false; $('gbar').value = 0; syncUI();
+    const v = await openVideo(url);
+    gSetSource({kind: 'video', draw: v, w: v.videoWidth, h: v.videoHeight, video: v, url});
+    await gSeekPreview();
+    glog(`Video ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)} detik dimuat. Atur bagian yang tampil, lalu tekan "Buat GIF".`);
+  } catch (err) { URL.revokeObjectURL(url); glog('Gagal memuat video: ' + err.message, 'bad'); }
+  busy = false; $('gbar').value = 0; syncUI();
+};
+
+// ---- "Buat GIF": terapkan tampilan (zoom + geser) lalu kompres sampai muat batas ukuran
+async function buildFromGif(tf){
+  const u = gsrc.bytes, kb0 = (u.length / 1024).toFixed(1);
+  const asIs = u.length <= GIF_MAX && gsrc.w === GW && gsrc.h === GH &&
+               Math.abs(tf.z - 1) < 1e-9 && Math.abs(tf.x - .5) < 1e-9 && Math.abs(tf.y - .5) < 1e-9;
+  if (asIs) { setGif(u, ''); return; }                    // sudah pas: pakai file asli tanpa dikompres ulang
+  const r = await optimizeGif(u, glog, tf);
+  if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; naikkan batas ukuran atau pakai GIF yang lebih pendek`);
+  setGif(r.data, ` · dari GIF ${kb0} KB (${r.n} warna, ${r.frames} dari ${r.src} frame${r.cut ? `; hanya ${GIF_MAXFR} frame pertama dibaca` : ''})`);
+}
+async function buildFromVideo(tf){
+  const fps = +$('vFps').value, dur = +$('vDur').value;
+  const fr = await grabFrames(gsrc.video, Math.max(0, +$('vStart').value || 0), dur, fps, glog, tf);
+  const r = await optimizeFrames(fr, glog, $('vPrio').value === 'fps' ? LADDER_FPS : LADDER_COL, true);
+  if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; naikkan batas ukuran atau kurangi durasi`);
+  setGif(r.data, ` · dari video (${r.n} warna, ${r.frames} frame${r.kept < r.src ? `, durasi dipotong ${Math.round(r.kept / r.src * 100)}%` : ''}, ±${(r.frames / (r.kept / fps)).toFixed(0)} fps)`);
+}
+$('gbuild').onclick = async () => {
+  if (!gsrc || busy) return;
+  const tf = {z: gz, x: gx, y: gy};                       // salinan: perubahan editor saat memproses tidak ikut
+  const kind = gsrc.kind;
+  gifData = null; $('gifPrev').hidden = true; busy = true; syncUI(); $('gbar').removeAttribute('value');
+  try {
+    if (kind === 'gif') await buildFromGif(tf); else await buildFromVideo(tf);
+  } catch (err) { glog('Gagal membuat GIF: ' + err.message, 'bad'); }
+  if (kind === 'video') { try { await gSeekPreview(); } catch {} }   // kembalikan pratinjau ke frame awal
+  busy = false; $('gbar').value = 0; syncUI();
 };
 
 $('gifSend').onclick = async () => {
