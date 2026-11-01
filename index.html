@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eceef2">
+<title>Gantungan Musik – Kirim Gambar</title>
+<!-- favicon inline supaya tidak ada request /favicon.ico (404) di GitHub Pages -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎵%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#eceef2; --surface:#ffffff; --ink:#15171c; --mut:#5d6370; --line:#d9dce3;
+    --ac:#2b59ff; --acink:#ffffff; --soft:#e4e7ee; --ok:#12805c; --bad:#c62f3b;
+    --bezel:#17181d;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0f1115; --surface:#181b21; --ink:#eceef3; --mut:#9aa1ae; --line:#2a2e37;
+      --ac:#7d9bff; --acink:#0b1020; --soft:#22262e; --ok:#4cd6a0; --bad:#ff7b86;
+      --bezel:#07080a;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:max(20px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:440px;margin:0 auto}
+  header{margin:4px 0 28px}
+  h1{font-size:1.45rem;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--mut);font-size:.92rem}
+
+  /* ---- bodi gantungan = area crop ---- */
+  .fob{
+    position:relative; isolation:isolate; margin:16px auto 0; width:min(100%,360px);
+    background:var(--bezel); border-radius:30px; padding:16px 16px 20px;
+    box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 12px 28px -12px rgba(0,0,0,.45);
+  }
+  .fob.drag{outline:3px dashed var(--ac);outline-offset:6px}
+  .screen{position:relative;border-radius:8px;overflow:hidden;background:#000;line-height:0}
+  #cv{
+    width:100%; aspect-ratio:1/1; display:block; touch-action:none; cursor:grab;
+    -webkit-user-select:none; user-select:none; outline:none;
+  }
+  #cv.grabbing{cursor:grabbing}
+  #cv:focus-visible{box-shadow:0 0 0 3px var(--ac) inset}
+  .empty{
+    position:absolute; inset:0; width:100%; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:8px; background:transparent; border:0; color:#e8eaf0;
+    font:inherit; font-size:.95rem; line-height:1.35; cursor:pointer; padding:12px; text-align:center;
+  }
+  .empty svg{width:34px;height:34px;opacity:.85}
+  .empty small{color:#9aa1ae;font-size:.8rem}
+  .empty[hidden]{display:none}
+  .empty:focus-visible{outline:3px solid var(--ac);outline-offset:-3px}
+  .size-tag{
+    margin:12px 0 0; text-align:center; font-size:.78rem; color:#8d94a1; line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+
+  .hint{margin:16px 0 0;text-align:center;color:var(--mut);font-size:.85rem;min-height:1.3em}
+
+  /* ---- panel ---- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:16px}
+  .panel h2{font-size:.95rem;margin:0 0 10px}
+  .zoomrow{display:flex;align-items:center;gap:10px}
+  .zoomrow input[type=range]{flex:1;min-width:0;accent-color:var(--ac);height:28px}
+  .zoomrow output{min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums;font-size:.85rem;color:var(--mut)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+
+  button,.btn{
+    font:inherit; font-size:.92rem; font-weight:600; border:0; border-radius:10px; padding:11px 12px;
+    background:var(--soft); color:var(--ink); cursor:pointer; text-align:center; min-height:44px;
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover:not(:disabled),.btn:hover{filter:brightness(.97)}
+  button:disabled{opacity:.4;cursor:default}
+  button.pri{background:var(--ac);color:var(--acink)}
+  button.ico{padding:0;width:44px;flex:none}
+  button:focus-visible,.btn:focus-visible,select:focus-visible,summary:focus-visible,input:focus-visible{
+    outline:3px solid var(--ac);outline-offset:2px;
+  }
+
+  /* ---- koneksi ---- */
+  .conn{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .chip{display:inline-flex;align-items:center;gap:8px;font-size:.88rem;color:var(--mut);min-width:0}
+  .chip i{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+  .chip.on{color:var(--ink)} .chip.on i{background:var(--ok)}
+  .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  progress{width:100%;height:8px;margin:14px 0 0;appearance:none;-webkit-appearance:none;border:0;border-radius:99px;overflow:hidden;background:var(--soft)}
+  progress::-webkit-progress-bar{background:var(--soft)}
+  progress::-webkit-progress-value{background:var(--ac);transition:width .1s}
+  progress::-moz-progress-bar{background:var(--ac)}
+  #log,#glog{margin:10px 0 0;font-size:.88rem;min-height:1.3em;color:var(--mut);white-space:pre-wrap}
+  #log.ok,#glog.ok{color:var(--ok)} #log.bad,#glog.bad{color:var(--bad)}
+
+  details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  summary{cursor:pointer;font-size:.88rem;color:var(--mut)}
+  .set{display:grid;gap:12px;margin-top:12px;font-size:.88rem}
+  .set label{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  select{font:inherit;font-size:.88rem;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);max-width:62%}
+  .gifprev{display:block;width:100%;max-width:240px;aspect-ratio:1/1;object-fit:contain;background:#000;border-radius:8px;margin:0 auto 10px}
+  .gifprev[hidden]{display:none}
+  .btn.full{display:flex;width:100%;margin-top:8px}
+  input[type=number]{font:inherit;font-size:.88rem;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:5.5em;text-align:right}
+  .note{margin:16px 4px 0;color:var(--mut);font-size:.78rem}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Gantungan Musik</h1>
+    <p>Atur foto di layar gantungan, lalu kirim lewat Bluetooth.</p>
+  </header>
+
+  <section class="fob" id="fob" aria-label="Area crop 240 kali 240">
+    <div class="screen">
+      <canvas id="cv" tabindex="0" aria-label="Area crop. Geser untuk memindahkan foto, plus dan minus untuk zoom."></canvas>
+      <button class="empty" id="empty" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5-8 8"/></svg>
+        <span>Pilih foto</span>
+        <small>atau seret foto ke sini</small>
+      </button>
+    </div>
+    <p class="size-tag">240 × 240 piksel</p>
+  </section>
+  <p class="hint" id="hint">Pilih foto untuk mulai mengatur bagian yang tampil.</p>
+
+  <section class="panel" aria-label="Atur foto">
+    <div class="zoomrow">
+      <button class="ico" id="zout" type="button" aria-label="Perkecil" disabled>−</button>
+      <input id="zoom" type="range" min="0" max="1000" value="0" aria-label="Zoom" disabled>
+      <button class="ico" id="zin" type="button" aria-label="Perbesar" disabled>+</button>
+      <output id="zval">1,0×</output>
+    </div>
+    <div class="grid3">
+      <button id="fill" type="button" disabled>Isi layar</button>
+      <button id="fit" type="button" disabled>Muat semua</button>
+      <button id="rot" type="button" disabled>Putar 90°</button>
+    </div>
+    <div class="grid2">
+      <label class="btn" for="file">Ganti foto</label>
+      <button id="reset" type="button" disabled>Atur ulang</button>
+    </div>
+    <input id="file" type="file" accept="image/*" hidden>
+  </section>
+
+  <section class="panel" aria-label="Kirim ke gantungan">
+    <div class="conn">
+      <div class="chip" id="chip" role="status"><i></i><span id="chipTxt">Belum terhubung</span></div>
+      <button id="conn" type="button">Hubungkan</button>
+    </div>
+    <div class="grid2">
+      <button id="send" class="pri" type="button" disabled>Kirim foto</button>
+      <button id="clear" type="button" disabled>Hapus gambar</button>
+    </div>
+    <progress id="bar" value="0" max="1"></progress>
+    <div id="log" role="status">Belum ada foto.</div>
+
+    <details>
+      <summary>Pengaturan</summary>
+      <div class="set">
+        <label>Mode kirim
+          <select id="mode">
+            <option value="resp">Andal (disarankan)</option>
+            <option value="nr">Cepat (tanpa konfirmasi)</option>
+          </select>
+        </label>
+        <label>Garis bantu (sepertiga)
+          <input id="grid" type="checkbox" checked>
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel" aria-label="Animasi GIF latar">
+    <h2>Animasi GIF (latar layar musik)</h2>
+    <img id="gifPrev" class="gifprev" alt="Pratinjau GIF" hidden>
+    <div class="grid3">
+      <label class="btn" for="gifFile">Pilih GIF</label>
+      <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
+      <button id="gifClear" type="button" disabled>Hapus GIF</button>
+    </div>
+    <input id="gifFile" type="file" accept="image/gif" hidden>
+    <label class="btn full" for="vidFile">Video dari galeri → GIF</label>
+    <input id="vidFile" type="file" accept="video/*" hidden>
+    <details>
+      <summary>Pengaturan video</summary>
+      <div class="set">
+        <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
+        <label>Durasi
+          <select id="vDur"><option value="2">2 detik</option><option value="3" selected>3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
+        </label>
+        <label>Frame per detik
+          <select id="vFps"><option value="5">5</option><option value="8" selected>8</option><option value="10">10</option><option value="12">12</option></select>
+        </label>
+      </div>
+    </details>
+    <progress id="gbar" value="0" max="1"></progress>
+    <div id="glog" role="status">GIF 240 × 240 piksel, maks 64 KB. Jika lebih dari 64 KB, dikompres otomatis (di-crop mengisi layar). Video dari galeri juga bisa diubah jadi GIF.</div>
+  </section>
+
+  <p class="note">Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak mendukung Web Bluetooth.</p>
+</main>
+
+<script>
+/*
+ * Gantungan Musik - web uploader (Web Bluetooth)
+ *   1. Atur crop foto 240x240  2. Hubungkan ke "Gantungan..."  3. Kirim JPEG lewat GATT
+ *
+ * Protokol (harus sama dengan Image_Reader.cpp di firmware), little-endian:
+ *   [01][size u32][crc32 u32][jenis u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar)
+ *   [02][seq u16][payload<=100B]         DATA
+ *   [03] END   [04] ABORT   [05][jenis u8] CLEAR
+ * Status (notify): 1 menerima, 2 OK, 8 terhapus, 3-7/9/10 = error (lihat tabel ERR).
+ */
+const SVC  = '7a1c0001-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const DATA = '7a1c0002-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const STAT = '7a1c0003-5b6e-4f0a-9d5e-1f2c3d4e5a60';
+const KIND_JPEG = 0, KIND_GIF = 1;
+const GIF_MAX = 64 * 1024;     // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
+const MAX_BYTES = 48 * 1024;   // HARUS sama dengan IMG_MAX_BYTES di Config.h (firmware)
+const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
+const OUT = 240;               // ukuran layar gantungan
+const MAXZ = 6;                // zoom maksimum relatif terhadap "isi layar"
+const ERR = {3:'ukuran tidak valid',4:'CRC salah',5:'urutan paket salah',6:'RAM ESP32 kurang',
+             7:'LittleFS bermasalah',9:'timeout di ESP32',10:'format file tidak valid (JPEG harus baseline / file harus GIF)'};
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+function log(t, k){ const l = $('log'); l.textContent = t; l.className = k || ''; }
+function glog(t, k){ const l = $('glog'); l.textContent = t; l.className = k || ''; }
+const fmtZ = z => z.toFixed(1).replace('.', ',') + '×';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let dev, dataC, statC, lastStatus = -1, waiter = null, busy = false;
+
+// ================= EDITOR CROP =================
+// Posisi disimpan dinormalisasi (0..1 terhadap sisi area crop) agar tetap benar saat layar diubah ukurannya.
+let src = null;            // ImageBitmap atau canvas hasil rotasi
+let zoom = 1, nx = .5, ny = .5;   // zoom relatif "isi layar"; (nx,ny) = pusat foto
+let V = 320, dpr = 1;
+let estTimer = 0, estSeq = 0;
+
+const baseScale = S => Math.max(S / src.width, S / src.height);
+const minZoom = () => Math.min(1 / src.width, 1 / src.height) / Math.max(1 / src.width, 1 / src.height);
+
+function clampAxis(c, len){
+  return len >= 1 ? Math.min(len / 2, Math.max(1 - len / 2, c))
+                  : Math.min(1 - len / 2, Math.max(len / 2, c));
+}
+function clampAll(){
+  zoom = Math.min(MAXZ, Math.max(minZoom(), zoom));
+  const b = Math.max(1 / src.width, 1 / src.height) * zoom;
+  nx = clampAxis(nx, src.width * b);
+  ny = clampAxis(ny, src.height * b);
+}
+
+function render(c, S){
+  const b = baseScale(S) * zoom, dw = src.width * b, dh = src.height * b;
+  c.drawImage(src, nx * S - dw / 2, ny * S - dh / 2, dw, dh);
+}
+
+function draw(){
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!src) return;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  render(ctx, cv.width);
+  if ($('grid').checked) {
+    const S = cv.width;
+    ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = Math.max(1, dpr * .8);
+    ctx.beginPath();
+    for (let i = 1; i < 3; i++) { ctx.moveTo(S * i / 3, 0); ctx.lineTo(S * i / 3, S); ctx.moveTo(0, S * i / 3); ctx.lineTo(S, S * i / 3); }
+    ctx.stroke();
+  }
+}
+
+function syncUI(){
+  const has = !!src;
+  ['zoom','zin','zout','fill','fit','rot','reset'].forEach(i => $(i).disabled = !has);
+  $('empty').hidden = has;
+  if (has) {
+    const mz = minZoom();
+    $('zoom').value = mz >= MAXZ ? 0 : Math.round(Math.log(zoom / mz) / Math.log(MAXZ / mz) * 1000);
+    $('zval').textContent = fmtZ(zoom);
+  }
+  $('send').disabled = busy || !(dataC && src);
+  $('clear').disabled = busy || !dataC;
+  $('gifSend').disabled = busy || !(dataC && gifData);
+  $('gifClear').disabled = busy || !dataC;
+  $('conn').disabled = busy || !btOK;
+}
+
+function changed(){
+  if (!src) return;
+  clampAll(); draw(); syncUI(); scheduleEstimate();
+}
+
+function setZoomAt(z, px, py){
+  const mz = minZoom(); z = Math.min(MAXZ, Math.max(mz, z));
+  const r = z / zoom;
+  nx = px + (nx - px) * r; ny = py + (ny - py) * r; zoom = z;
+}
+
+function layout(){
+  V = cv.clientWidth || 320;
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = cv.height = Math.round(V * dpr);
+  if (src) { clampAll(); }
+  draw();
+}
+new ResizeObserver(layout).observe(cv);
+
+// ---- gestur: geser, cubit, gulir, keyboard
+const ptr = new Map();
+cv.addEventListener('pointerdown', e => {
+  if (!src) return;
+  cv.setPointerCapture(e.pointerId); cv.classList.add('grabbing');
+  ptr.set(e.pointerId, {x: e.clientX, y: e.clientY});
+});
+cv.addEventListener('pointermove', e => {
+  const prev = ptr.get(e.pointerId); if (!prev || !src) return;
+  const cur = {x: e.clientX, y: e.clientY};
+  if (ptr.size === 1) {
+    nx += (cur.x - prev.x) / V; ny += (cur.y - prev.y) / V;
+  } else if (ptr.size === 2) {
+    const other = [...ptr.entries()].find(([id]) => id !== e.pointerId)[1];
+    const d0 = Math.hypot(prev.x - other.x, prev.y - other.y) || 1;
+    const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+    const rc = cv.getBoundingClientRect();
+    const m0x = (prev.x + other.x) / 2, m0y = (prev.y + other.y) / 2;
+    const m1x = (cur.x + other.x) / 2,  m1y = (cur.y + other.y) / 2;
+    nx += (m1x - m0x) / V; ny += (m1y - m0y) / V;
+    setZoomAt(zoom * d1 / d0, (m1x - rc.left) / V, (m1y - rc.top) / V);
+  }
+  ptr.set(e.pointerId, cur);
+  changed();
+});
+const endPtr = e => { ptr.delete(e.pointerId); if (!ptr.size) cv.classList.remove('grabbing'); };
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', e => {
+  if (!src) return; e.preventDefault();
+  const rc = cv.getBoundingClientRect();
+  setZoomAt(zoom * Math.exp(-e.deltaY * .0015), (e.clientX - rc.left) / V, (e.clientY - rc.top) / V);
+  changed();
+}, {passive: false});
+cv.addEventListener('keydown', e => {
+  if (!src) return;
+  const st = .02; let h = true;
+  if (e.key === 'ArrowLeft') nx -= st; else if (e.key === 'ArrowRight') nx += st;
+  else if (e.key === 'ArrowUp') ny -= st; else if (e.key === 'ArrowDown') ny += st;
+  else if (e.key === '+' || e.key === '=') setZoomAt(zoom * 1.1, .5, .5);
+  else if (e.key === '-') setZoomAt(zoom / 1.1, .5, .5);
+  else h = false;
+  if (h) { e.preventDefault(); changed(); }
+});
+
+// ---- kontrol
+$('zoom').oninput = e => {
+  const mz = minZoom();
+  setZoomAt(mz * Math.pow(MAXZ / mz, e.target.value / 1000), .5, .5);
+  changed();
+};
+$('zin').onclick  = () => { setZoomAt(zoom * 1.15, .5, .5); changed(); };
+$('zout').onclick = () => { setZoomAt(zoom / 1.15, .5, .5); changed(); };
+$('fill').onclick = () => { zoom = 1; nx = ny = .5; changed(); $('hint').textContent = 'Foto memenuhi layar; bagian di luar kotak terpotong.'; };
+$('fit').onclick  = () => { zoom = minZoom(); nx = ny = .5; changed(); $('hint').textContent = 'Seluruh foto terlihat; sisa area diisi hitam.'; };
+$('reset').onclick = () => $('fill').onclick();
+$('rot').onclick = () => {
+  const c = document.createElement('canvas'); c.width = src.height; c.height = src.width;
+  const x = c.getContext('2d');
+  x.translate(c.width / 2, c.height / 2); x.rotate(Math.PI / 2);
+  x.drawImage(src, -src.width / 2, -src.height / 2);
+  if (src.close) src.close();
+  src = c; zoom = 1; nx = ny = .5; changed();
+};
+$('grid').onchange = draw;
+$('empty').onclick = () => $('file').click();
+
+// ---- muat foto (dari input atau seret-lepas)
+async function loadFile(f){
+  if (!f) return;
+  let bmp;
+  try { bmp = await createImageBitmap(f); }
+  catch { log('Format foto tidak bisa dibaca browser ini. Coba JPG atau PNG.', 'bad'); return; }
+  if (src && src.close) src.close();
+  src = bmp; zoom = 1; nx = ny = .5;
+  $('hint').textContent = 'Geser foto untuk memilih bagian yang tampil. Cubit atau gulir untuk zoom.';
+  layout(); changed();
+}
+$('file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; loadFile(f); };
+const fob = $('fob');
+['dragenter','dragover'].forEach(t => fob.addEventListener(t, e => { e.preventDefault(); fob.classList.add('drag'); }));
+['dragleave','drop'].forEach(t => fob.addEventListener(t, e => { e.preventDefault(); fob.classList.remove('drag'); }));
+fob.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) loadFile(f); });
+
+// ---- ekspor 240x240 -> JPEG <= MAX_BYTES
+async function encode(){
+  const o = document.createElement('canvas'); o.width = o.height = OUT;
+  const c = o.getContext('2d');
+  c.fillStyle = '#000'; c.fillRect(0, 0, OUT, OUT);
+  c.imageSmoothingQuality = 'high';
+  render(c, OUT);
+  for (let q = 0.92; q >= 0.3; q -= 0.06) {
+    const b = await new Promise(r => o.toBlob(r, 'image/jpeg', q));
+    if (!b) continue;
+    const u = new Uint8Array(await b.arrayBuffer());
+    if (u.length <= MAX_BYTES) return {u, q};
+  }
+  return null;
+}
+function scheduleEstimate(){
+  clearTimeout(estTimer);
+  estTimer = setTimeout(async () => {
+    const my = ++estSeq;
+    const r = await encode();
+    if (my !== estSeq || busy) return;
+    if (r) log(`Siap dikirim · JPEG ${(r.u.length / 1024).toFixed(1)} KB (kualitas ${r.q.toFixed(2)})`);
+    else log('Foto terlalu besar walau kualitas diturunkan.', 'bad');
+  }, 350);
+}
+
+// ================= BLE =================
+const btOK = window.isSecureContext && 'bluetooth' in navigator;
+if (!btOK) {
+  log(!window.isSecureContext
+    ? 'Halaman harus dibuka lewat HTTPS.'
+    : 'Browser ini tidak mendukung Web Bluetooth. Pakai Chrome/Edge (desktop/Android) atau Bluefy (iOS).', 'bad');
+}
+
+// CRC32 (sama dengan ESP32)
+const T = new Uint32Array(256);
+for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[i] = c >>> 0; }
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
+
+function setChip(on, name){
+  $('chip').className = 'chip' + (on ? ' on' : '');
+  $('chipTxt').textContent = on ? 'Terhubung · ' + name : 'Belum terhubung';
+  $('conn').textContent = on ? 'Putuskan' : 'Hubungkan';
+}
+
+function onNotify(e){ lastStatus = e.target.value.getUint8(0); if (waiter) waiter(); }
+
+$('conn').onclick = async () => {
+  if (!btOK) return;
+  if (dev && dev.gatt.connected) { dev.gatt.disconnect(); return; }
+  try {
+    dev = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'Gantungan' }], optionalServices: [SVC] });
+    dev.addEventListener('gattserverdisconnected', () => { dataC = null; statC = null; setChip(false); log('Koneksi terputus.'); syncUI(); });
+    log('Menghubungkan…');
+    const srv = await dev.gatt.connect();
+    const svc = await srv.getPrimaryService(SVC);
+    dataC = await svc.getCharacteristic(DATA);
+    statC = await svc.getCharacteristic(STAT);
+    statC.addEventListener('characteristicvaluechanged', onNotify);
+    await statC.startNotifications();
+    setChip(true, dev.name || 'Gantungan');
+    log(src ? 'Terhubung. Siap mengirim.' : 'Terhubung. Pilih foto, lalu kirim.', 'ok');
+    syncUI();
+  } catch (e) {
+    log(e.name === 'NotFoundError' ? 'Dibatalkan, atau perangkat "Gantungan…" tidak ditemukan.' : 'Gagal terhubung: ' + e.message, 'bad');
+  }
+};
+
+function waitStatus(ok, ms){
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => { waiter = null; rej(new Error('ESP32 tidak membalas')); }, ms);
+    waiter = () => {
+      if (ok.includes(lastStatus)) { clearTimeout(t); waiter = null; res(lastStatus); }
+      else if (ERR[lastStatus])    { clearTimeout(t); waiter = null; rej(new Error(ERR[lastStatus])); }
+    };
+    waiter();
+  });
+}
+
+// Mode "Andal": write dengan konfirmasi -> tiap paket dipastikan sampai sebelum paket berikutnya.
+// Mode "Cepat": tanpa konfirmasi + jeda kecil (bisa kehilangan paket jika ESP32 lambat).
+async function writePkt(pkt){
+  const p = dataC.properties;
+  const useResp = $('mode').value === 'resp' ? (p.write || !p.writeWithoutResponse) : !p.writeWithoutResponse;
+  if (useResp) { await dataC.writeValueWithResponse(pkt); return; }
+  for (let i = 0; i < 5; i++) {
+    try { await dataC.writeValueWithoutResponse(pkt); await sleep(12); return; }
+    catch (e) { await sleep(20); }
+  }
+  throw new Error('Gagal menulis paket');
+}
+
+// Kirim satu file (kind: KIND_JPEG / KIND_GIF). bar = <progress>, say = fungsi pesan. Return: detik.
+async function transfer(kind, data, bar, say){
+  lastStatus = -1;
+  const hdr = new Uint8Array(10); hdr[0] = 1; hdr[9] = kind;
+  const dv = new DataView(hdr.buffer);
+  dv.setUint32(1, data.length, true); dv.setUint32(5, crc32(data), true);
+  let p = waitStatus([1], 4000);
+  await dataC.writeValueWithResponse(hdr);
+  await p;
+
+  const t0 = performance.now();
+  for (let off = 0, seq = 0; off < data.length; off += CHUNK, seq++) {
+    if (!dataC) throw new Error('koneksi terputus');
+    if (ERR[lastStatus]) throw new Error(ERR[lastStatus] + ` (sekitar paket ${seq})`);
+    const part = data.subarray(off, off + CHUNK);
+    const pkt = new Uint8Array(3 + part.length);
+    pkt[0] = 2; pkt[1] = seq & 255; pkt[2] = seq >> 8; pkt.set(part, 3);
+    await writePkt(pkt);
+    if (seq % 8 === 0) { bar.value = off / data.length; say(`Mengirim… ${Math.round(off / data.length * 100)}%`); }
+  }
+  bar.value = 1;
+  p = waitStatus([2], 15000);          // ESP32 memverifikasi CRC lalu menulis ke flash
+  await dataC.writeValueWithResponse(new Uint8Array([3]));
+  await p;
+  return (performance.now() - t0) / 1000;
+}
+
+async function clearOnDevice(kind){
+  lastStatus = -1;
+  const p = waitStatus([8], 4000);
+  await dataC.writeValueWithResponse(new Uint8Array([5, kind]));
+  await p;
+}
+
+// ---- foto (JPEG)
+$('send').onclick = async () => {
+  if (!dataC || !src) return;
+  busy = true; syncUI(); $('bar').value = 0;
+  try {
+    clearTimeout(estTimer); estSeq++;
+    log('Menyiapkan foto…');
+    const enc = await encode();
+    if (!enc) throw new Error('foto terlalu besar walau kualitas diturunkan');
+    const sec = await transfer(KIND_JPEG, enc.u, $('bar'), log);
+    log(`Terkirim ✔ ${(enc.u.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
+  } catch (e) { log('Gagal: ' + e.message, 'bad'); }
+  busy = false; syncUI();
+};
+
+$('clear').onclick = async () => {
+  busy = true; syncUI();
+  try { await clearOnDevice(KIND_JPEG); $('bar').value = 0; log('Gambar di gantungan dihapus.', 'ok'); }
+  catch (e) { log('Gagal: ' + e.message, 'bad'); }
+  busy = false; syncUI();
+};
+
+// ================= KOMPRESI GIF OTOMATIS (jika > GIF_MAX) =================
+// Alur: decode semua frame -> skala 240x240 (isi layar) -> palet global (median cut)
+//       -> encode ulang dengan delta antar-frame (piksel tak berubah = transparan) -> coba tingkat
+//       kompresi makin agresif sampai muat <= GIF_MAX.
+const GIF_MAXFR = 300;
+// [jumlah warna, toleransi warna antar-frame, ambil tiap N frame] dari kualitas terbaik ke terkecil
+const GIF_LADDER = [[255,0,1],[255,6,1],[127,10,1],[127,10,2],[63,14,2],[63,14,3],[31,20,3],[31,20,4],[15,28,4],[15,28,6],[15,40,8],[7,48,12]];
+const yieldUI = () => new Promise(r => setTimeout(r));
+
+function lzwDec(mc, data, npix){
+  const clear = 1 << mc, eoi = clear + 1, pre = new Uint16Array(4096), suf = new Uint8Array(4096), stk = new Uint8Array(4097);
+  const out = new Uint8Array(npix);
+  let size = mc + 1, next = eoi + 1, mask = (1 << size) - 1, op = 0, bits = 0, acc = 0, ip = 0, old = -1, first = 0;
+  while (op < npix) {
+    while (bits < size) { if (ip >= data.length) return out; acc |= data[ip++] << bits; bits += 8; }
+    const code = acc & mask; acc >>>= size; bits -= size;
+    if (code === clear) { size = mc + 1; next = eoi + 1; mask = (1 << size) - 1; old = -1; continue; }
+    if (code === eoi) break;
+    if (old < 0) { out[op++] = code; old = first = code; continue; }
+    let c = code, sp = 0;
+    if (code >= next) { stk[sp++] = first; c = old; }
+    while (c >= clear) { stk[sp++] = suf[c]; c = pre[c]; }
+    first = c; stk[sp++] = c;
+    while (sp && op < npix) out[op++] = stk[--sp];
+    if (next < 4096) { pre[next] = old; suf[next] = first; next++; if (next === (1 << size) && size < 12) { size++; mask = (1 << size) - 1; } }
+    old = code;
+  }
+  return out;
+}
+
+// Decode GIF -> frame penuh, sudah di-skala ke OUT x OUT (cover, latar hitam)
+async function decodeGif(u, onProg){
+  const w = u[6] | u[7] << 8, h = u[8] | u[9] << 8, fl = u[10]; let p = 13;
+  if (!w || !h) throw new Error('GIF rusak');
+  let gct = null;
+  if (fl & 0x80) { const n = 3 << ((fl & 7) + 1); gct = u.subarray(p, p + n); p += n; }
+  const cv0 = new Uint8ClampedArray(w * h * 4);
+  const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+  const tx = tmp.getContext('2d');
+  const oc = document.createElement('canvas'); oc.width = oc.height = OUT;
+  const ox = oc.getContext('2d', {willReadFrequently: true});
+  const s = Math.max(OUT / w, OUT / h), dw = w * s, dh = h * s;
+  const frames = []; let g = {disp: 0, tr: -1, delay: 10};
+  while (p < u.length && frames.length < GIF_MAXFR) {
+    const b = u[p++];
+    if (b === 0x3B) break;
+    if (b === 0x21) {
+      if (u[p++] === 0xF9) g = {disp: (u[p + 1] >> 2) & 7, tr: (u[p + 1] & 1) ? u[p + 4] : -1, delay: (u[p + 2] | u[p + 3] << 8) || 10};
+      while (u[p]) p += u[p] + 1;
+      p++;
+    } else if (b === 0x2C) {
+      const x = u[p] | u[p + 1] << 8, y = u[p + 2] | u[p + 3] << 8, iw = u[p + 4] | u[p + 5] << 8, ih = u[p + 6] | u[p + 7] << 8, pk = u[p + 8]; p += 9;
+      let ct = gct;
+      if (pk & 0x80) { const n = 3 << ((pk & 7) + 1); ct = u.subarray(p, p + n); p += n; }
+      if (!ct) throw new Error('palet warna tidak ada');
+      const mc = u[p++], parts = []; let tot = 0;
+      while (u[p]) { parts.push(u.subarray(p + 1, p + 1 + u[p])); tot += u[p]; p += u[p] + 1; }
+      p++;
+      const data = new Uint8Array(tot); let q = 0; for (const a of parts) { data.set(a, q); q += a.length; }
+      const idx = lzwDec(mc, data, iw * ih);
+      const rows = [];
+      if (pk & 0x40) { for (const [st, sp] of [[0,8],[4,8],[2,4],[1,2]]) for (let r = st; r < ih; r += sp) rows.push(r); }
+      else for (let r = 0; r < ih; r++) rows.push(r);
+      const bak = g.disp === 3 ? cv0.slice() : null;
+      for (let r = 0; r < ih; r++) {
+        const yy = y + rows[r]; if (yy >= h) continue;
+        for (let c = 0; c < iw; c++) {
+          const xx = x + c; if (xx >= w) continue;
+          const k = idx[r * iw + c]; if (k === g.tr) continue;
+          const o = (yy * w + xx) * 4;
+          cv0[o] = ct[k * 3]; cv0[o + 1] = ct[k * 3 + 1]; cv0[o + 2] = ct[k * 3 + 2]; cv0[o + 3] = 255;
+        }
+      }
+      tx.putImageData(new ImageData(cv0, w, h), 0, 0);
+      ox.fillStyle = '#000'; ox.fillRect(0, 0, OUT, OUT); ox.imageSmoothingQuality = 'high';
+      ox.drawImage(tmp, (OUT - dw) / 2, (OUT - dh) / 2, dw, dh);
+      frames.push({px: ox.getImageData(0, 0, OUT, OUT).data, ms: g.delay * 10});
+      if (g.disp === 2) { for (let r = y; r < Math.min(h, y + ih); r++) cv0.fill(0, (r * w + x) * 4, (r * w + Math.min(w, x + iw)) * 4); }
+      else if (bak) cv0.set(bak);
+      g = {disp: 0, tr: -1, delay: 10};
+      if (frames.length % 8 === 0) { onProg(frames.length); await yieldUI(); }
+    } else throw new Error('struktur GIF tidak dikenali');
+  }
+  frames.cut = frames.length >= GIF_MAXFR && p < u.length && u[p] !== 0x3B;
+  return frames;
+}
+
+// Palet global: median cut atas histogram RGB555
+function buildPal(hist, n){
+  const ent = []; for (let i = 0; i < 32768; i++) if (hist[i]) ent.push(i);
+  const ch = (e, a) => (e >> a) & 31, boxes = [ent];
+  while (boxes.length < n) {
+    let bi = -1, ba = 0, bs = 0;
+    boxes.forEach((bx, i) => {
+      if (bx.length < 2) return;
+      for (const a of [10, 5, 0]) {
+        let lo = 31, hi = 0;
+        for (const e of bx) { const v = ch(e, a); if (v < lo) lo = v; if (v > hi) hi = v; }
+        if (hi - lo > bs) { bs = hi - lo; bi = i; ba = a; }
+      }
+    });
+    if (bi < 0) break;
+    const bx = boxes[bi].sort((p, q) => ch(p, ba) - ch(q, ba));
+    let tot = 0; for (const e of bx) tot += hist[e];
+    let acc = 0, cut = bx.length - 1;
+    for (let j = 0; j < bx.length - 1; j++) { acc += hist[bx[j]]; if (acc * 2 >= tot) { cut = j + 1; break; } }
+    boxes.splice(bi, 1, bx.slice(0, cut), bx.slice(cut));
+  }
+  const pal = new Uint8Array(boxes.length * 3);
+  boxes.forEach((bx, i) => {
+    let w = 0, r = 0, g = 0, b = 0;
+    for (const e of bx) { const c = hist[e]; w += c; r += ch(e, 10) * c; g += ch(e, 5) * c; b += ch(e, 0) * c; }
+    pal[i * 3] = Math.round(r / w * 255 / 31); pal[i * 3 + 1] = Math.round(g / w * 255 / 31); pal[i * 3 + 2] = Math.round(b / w * 255 / 31);
+  });
+  return pal;
+}
+function buildLut(pal){
+  const lut = new Uint8Array(32768), m = pal.length / 3;
+  for (let i = 0; i < 32768; i++) {
+    const r = ((i >> 10) & 31) * 255 / 31, g = ((i >> 5) & 31) * 255 / 31, b = (i & 31) * 255 / 31;
+    let best = 0, bd = 1e9;
+    for (let j = 0; j < m; j++) {
+      const dr = r - pal[j * 3], dg = g - pal[j * 3 + 1], db = b - pal[j * 3 + 2], d = dr * dr + dg * dg + db * db;
+      if (d < bd) { bd = d; best = j; }
+    }
+    lut[i] = best;
+  }
+  return lut;
+}
+
+function lzwEnc(idx, mc, out){
+  const clear = 1 << mc, eoi = clear + 1, buf = [];
+  let size = mc + 1, next = eoi + 1, dict = new Map(), acc = 0, bits = 0;
+  const emit = c => { acc |= c << bits; bits += size; while (bits >= 8) { buf.push(acc & 255); acc >>>= 8; bits -= 8; } };
+  emit(clear);
+  let pre = idx[0];
+  for (let i = 1; i < idx.length; i++) {
+    const k = idx[i], key = pre << 8 | k, v = dict.get(key);
+    if (v !== undefined) { pre = v; continue; }
+    emit(pre);
+    dict.set(key, next++);
+    if (next > (1 << size) && size < 12) size++;
+    if (next >= 4095) { emit(clear); dict = new Map(); size = mc + 1; next = eoi + 1; }
+    pre = k;
+  }
+  emit(pre);
+  if (next >= (1 << size) && size < 12) size++;
+  emit(eoi);
+  if (bits > 0) buf.push(acc & 255);
+  for (let i = 0; i < buf.length; i += 255) { const n = Math.min(255, buf.length - i); out.push(n); for (let j = 0; j < n; j++) out.push(buf[i + j]); }
+  out.push(0);
+}
+
+// Encode ulang. Piksel yang (hampir) sama dengan yang sedang tampil -> transparan, hanya kotak yang berubah disimpan.
+// Return Uint8Array, atau null jika melebihi GIF_MAX.
+function encodeGif(fr, step, n, tol, pal, lut){
+  const k = Math.max(2, Math.ceil(Math.log2(n + 1))), tI = (1 << k) - 1, out = [];
+  const w16 = v => out.push(v & 255, (v >> 8) & 255);
+  out.push(71, 73, 70, 56, 57, 97); w16(OUT); w16(OUT); out.push(0xF0 | (k - 1), 0, 0);
+  for (let i = 0; i < (1 << k); i++) out.push(pal[i * 3] || 0, pal[i * 3 + 1] || 0, pal[i * 3 + 2] || 0);
+  out.push(0x21, 0xFF, 11, ...'NETSCAPE2.0'.split('').map(c => c.charCodeAt(0)), 3, 1, 0, 0, 0);
+  const shown = new Int16Array(OUT * OUT).fill(-1), idx = new Uint8Array(OUT * OUT), t2 = tol * tol;
+  for (let f = 0; f < fr.length; f += step) {
+    let ms = 0; for (let j = f; j < Math.min(fr.length, f + step); j++) ms += fr[j].ms;
+    const px = fr[f].px; let x0 = OUT, y0 = OUT, x1 = -1, y1 = -1;
+    for (let yy = 0; yy < OUT; yy++) for (let xx = 0; xx < OUT; xx++) {
+      const q = yy * OUT + xx, o = q * 4, c = lut[(px[o] >> 3) << 10 | (px[o + 1] >> 3) << 5 | px[o + 2] >> 3], s = shown[q];
+      let same = s === c;
+      if (!same && s >= 0 && t2) { const dr = pal[s * 3] - pal[c * 3], dg = pal[s * 3 + 1] - pal[c * 3 + 1], db = pal[s * 3 + 2] - pal[c * 3 + 2]; same = dr * dr + dg * dg + db * db <= t2; }
+      if (same) idx[q] = tI;
+      else { idx[q] = c; shown[q] = c; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+    }
+    let rx = x0, ry = y0, rw = x1 - x0 + 1, rh = y1 - y0 + 1, sub;
+    if (x1 < 0) { rx = ry = 0; rw = rh = 1; sub = new Uint8Array([tI]); }
+    else { sub = new Uint8Array(rw * rh); for (let r = 0; r < rh; r++) sub.set(idx.subarray((ry + r) * OUT + rx, (ry + r) * OUT + rx + rw), r * rw); }
+    const cs = Math.min(65535, Math.max(2, Math.round(ms / 10)));
+    out.push(0x21, 0xF9, 4, 0x05, cs & 255, cs >> 8, tI, 0, 0x2C); w16(rx); w16(ry); w16(rw); w16(rh); out.push(0, Math.max(2, k));
+    lzwEnc(sub, Math.max(2, k), out);
+    if (out.length > GIF_MAX) return null;
+  }
+  out.push(0x3B);
+  return out.length > GIF_MAX ? null : Uint8Array.from(out);
+}
+
+async function optimizeGif(u, say){
+  return optimizeFrames(await decodeGif(u, n => say(`Membaca frame… ${n}`)), say);
+}
+async function optimizeFrames(fr, say){
+  if (!fr.length) throw new Error('tidak ada frame');
+  const hist = new Uint32Array(32768);
+  for (const f of fr) for (let o = 0; o < f.px.length; o += 8) hist[(f.px[o] >> 3) << 10 | (f.px[o + 1] >> 3) << 5 | f.px[o + 2] >> 3]++;
+  const cache = {};
+  for (const [n, tol, step] of GIF_LADDER) {
+    say(`Mengompres… ${n} warna, tiap ${step} frame`);
+    await yieldUI();
+    if (!cache[n]) { const pal = buildPal(hist, n); cache[n] = {pal, lut: buildLut(pal)}; }
+    const r = encodeGif(fr, step, n, tol, cache[n].pal, cache[n].lut);
+    if (r) return {data: r, n, step, frames: Math.ceil(fr.length / step), src: fr.length, cut: fr.cut};
+  }
+  return null;
+}
+
+// ================= GIF LATAR =================
+let gifData = null, gifUrl = null;
+
+$('gifFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let u = new Uint8Array(await f.arrayBuffer());
+  const sig = String.fromCharCode(...u.subarray(0, 6));
+  gifData = null; $('gifPrev').hidden = true;
+  if (sig !== 'GIF87a' && sig !== 'GIF89a') { glog('Bukan file GIF.', 'bad'); syncUI(); return; }
+  const kb0 = (u.length / 1024).toFixed(1); let note = '';
+  if (u.length > GIF_MAX) {
+    busy = true; syncUI(); $('gbar').removeAttribute('value');   // progress tak tentu
+    let r = null;
+    try { r = await optimizeGif(u, glog); }
+    catch (err) { busy = false; $('gbar').value = 0; glog('Gagal memproses GIF: ' + err.message, 'bad'); syncUI(); return; }
+    busy = false; $('gbar').value = 0;
+    if (!r) { glog(`GIF ${kb0} KB tidak bisa dikecilkan sampai ${GIF_MAX / 1024} KB. Pakai GIF yang lebih pendek (frame lebih sedikit).`, 'bad'); syncUI(); return; }
+    u = r.data;
+    note = ` · dikompres dari ${kb0} KB (${r.n} warna, ${r.frames} dari ${r.src} frame${r.cut ? `; hanya ${GIF_MAXFR} frame pertama dibaca` : ''})`;
+  }
+  setGif(u, note);
+};
+
+function setGif(u, note){
+  const kb = (u.length / 1024).toFixed(1);
+  const w = u[6] | (u[7] << 8), h = u[8] | (u[9] << 8);
+  gifData = u;
+  if (gifUrl) URL.revokeObjectURL(gifUrl);
+  gifUrl = URL.createObjectURL(new Blob([u], {type: 'image/gif'}));
+  $('gifPrev').src = gifUrl; $('gifPrev').hidden = false;
+  $('gbar').value = 0;
+  glog(`GIF ${w}×${h} · ${kb} KB${note}` + (w !== OUT || h !== OUT ? ` — bukan ${OUT}×${OUT}, tidak akan fullscreen di layar.` : ' · siap dikirim.'));
+  syncUI();
+}
+
+// ---- video dari galeri -> frame -> kompres -> GIF
+const seekTo = (v, t) => new Promise((res, rej) => {
+  if (Math.abs(v.currentTime - t) < 0.001) { res(); return; }
+  const to = setTimeout(() => rej(new Error('video macet saat mengambil frame')), 6000);
+  v.onseeked = () => { clearTimeout(to); res(); };
+  v.currentTime = t;
+});
+async function videoFrames(url, start, dur, fps, say){
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('video tidak bisa dibaca browser ini')); });
+  const total = v.duration;
+  if (!isFinite(total) || !v.videoWidth) throw new Error('video tidak valid');
+  start = Math.min(Math.max(0, start), Math.max(0, total - 0.2));
+  const n = Math.max(1, Math.min(Math.floor(Math.min(dur, total - start) * fps), GIF_MAXFR));
+  const c = document.createElement('canvas'); c.width = c.height = OUT;
+  const x = c.getContext('2d', {willReadFrequently: true});
+  x.imageSmoothingQuality = 'high';
+  const sc = Math.max(OUT / v.videoWidth, OUT / v.videoHeight), dw = v.videoWidth * sc, dh = v.videoHeight * sc;
+  const fr = [];
+  for (let i = 0; i < n; i++) {
+    say(`Mengambil frame… ${i + 1}/${n}`);
+    await seekTo(v, start + i / fps);
+    x.fillStyle = '#000'; x.fillRect(0, 0, OUT, OUT);
+    x.drawImage(v, (OUT - dw) / 2, (OUT - dh) / 2, dw, dh);
+    fr.push({px: x.getImageData(0, 0, OUT, OUT).data, ms: 1000 / fps});
+  }
+  v.removeAttribute('src'); v.load();
+  return fr;
+}
+$('vidFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  gifData = null; $('gifPrev').hidden = true; busy = true; syncUI(); $('gbar').removeAttribute('value');
+  const url = URL.createObjectURL(f);
+  try {
+    const fps = +$('vFps').value, dur = +$('vDur').value;
+    const fr = await videoFrames(url, Math.max(0, +$('vStart').value || 0), dur, fps, glog);
+    const r = await optimizeFrames(fr, glog);
+    if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; kurangi durasi atau FPS`);
+    setGif(r.data, ` · dari video (${r.n} warna, ${r.frames} frame)`);
+  } catch (err) { glog('Gagal mengubah video: ' + err.message, 'bad'); }
+  URL.revokeObjectURL(url); busy = false; $('gbar').value = 0; syncUI();
+};
+
+$('gifSend').onclick = async () => {
+  if (!dataC || !gifData) return;
+  busy = true; syncUI(); $('gbar').value = 0;
+  try {
+    const sec = await transfer(KIND_GIF, gifData, $('gbar'), glog);
+    glog(`Terkirim ✔ ${(gifData.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
+  } catch (e) { glog('Gagal: ' + e.message, 'bad'); }
+  busy = false; syncUI();
+};
+
+$('gifClear').onclick = async () => {
+  busy = true; syncUI();
+  try { await clearOnDevice(KIND_GIF); $('gbar').value = 0; glog('GIF di gantungan dihapus.', 'ok'); }
+  catch (e) { glog('Gagal: ' + e.message, 'bad'); }
+  busy = false; syncUI();
+};
+
+layout(); syncUI();
+</script>
+</body>
+</html>
