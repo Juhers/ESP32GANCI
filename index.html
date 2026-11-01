@@ -797,7 +797,14 @@ const seekTo = (v, t) => new Promise((res, rej) => {
 async function videoFrames(url, start, dur, fps, say){
   const v = document.createElement('video');
   v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
-  await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('video tidak bisa dibaca browser ini')); });
+  await new Promise((res, rej) => {
+    const to = setTimeout(() => rej(new Error('video tidak termuat (format/codec tidak didukung browser ini?)')), 12000);
+    v.onloadeddata = () => { clearTimeout(to); res(); };
+    v.onerror = () => { clearTimeout(to); rej(new Error('video tidak bisa dibaca browser ini')); };
+    // iOS/Android sering baru memuat frame setelah diputar; putar sebentar tanpa suara
+    const pl = v.play(); if (pl && pl.then) pl.then(() => v.pause()).catch(() => {});
+  });
+  v.pause();
   const total = v.duration;
   if (!isFinite(total) || !v.videoWidth) throw new Error('video tidak valid');
   start = Math.min(Math.max(0, start), Math.max(0, total - 0.2));
