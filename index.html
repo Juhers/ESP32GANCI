@@ -190,19 +190,25 @@
     <label class="btn full" for="vidFile">Video dari galeri → GIF</label>
     <input id="vidFile" type="file" accept="video/*" hidden>
     <details>
-      <summary>Pengaturan video</summary>
+      <summary>Pengaturan GIF &amp; video</summary>
       <div class="set">
+        <label>Batas ukuran GIF
+          <select id="gMax"><option value="64" selected>64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option></select>
+        </label>
         <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
-        <label>Durasi
-          <select id="vDur"><option value="2">2 detik</option><option value="3" selected>3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
+        <label>Durasi video
+          <select id="vDur"><option value="1">1 detik</option><option value="2" selected>2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6">6 detik</option></select>
         </label>
         <label>Frame per detik
-          <select id="vFps"><option value="5">5</option><option value="8" selected>8</option><option value="10">10</option><option value="12">12</option></select>
+          <select id="vFps"><option value="8">8</option><option value="10">10</option><option value="12" selected>12</option><option value="15">15</option><option value="20">20</option></select>
+        </label>
+        <label>Prioritas
+          <select id="vPrio"><option value="fps" selected>Gerakan mulus (warna dikurangi)</option><option value="col">Warna bagus (frame dijarangkan)</option></select>
         </label>
       </div>
     </details>
     <progress id="gbar" value="0" max="1"></progress>
-    <div id="glog" role="status">GIF 240 × 240 piksel, maks 64 KB. Jika lebih dari 64 KB, dikompres otomatis (di-crop mengisi layar). Video dari galeri juga bisa diubah jadi GIF.</div>
+    <div id="glog" role="status">GIF 240 × 240 piksel. Jika lebih dari batas ukuran (Pengaturan, default 64 KB), dikompres otomatis (di-crop mengisi layar). Video dari galeri juga bisa diubah jadi GIF.</div>
   </section>
 
   <p class="note">Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak mendukung Web Bluetooth.</p>
@@ -223,7 +229,7 @@ const SVC  = '7a1c0001-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const DATA = '7a1c0002-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const STAT = '7a1c0003-5b6e-4f0a-9d5e-1f2c3d4e5a60';
 const KIND_JPEG = 0, KIND_GIF = 1;
-const GIF_MAX = 64 * 1024;     // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
+let GIF_MAX = 64 * 1024;     // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
 const MAX_BYTES = 48 * 1024;   // HARUS sama dengan IMG_MAX_BYTES di Config.h (firmware)
 const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
 const OUT = 240;               // ukuran layar gantungan
@@ -555,7 +561,9 @@ $('clear').onclick = async () => {
 //       kompresi makin agresif sampai muat <= GIF_MAX.
 const GIF_MAXFR = 300;
 // [jumlah warna, toleransi warna antar-frame, ambil tiap N frame] dari kualitas terbaik ke terkecil
-const GIF_LADDER = [[255,0,1],[255,6,1],[127,10,1],[127,10,2],[63,14,2],[63,14,3],[31,20,3],[31,20,4],[15,28,4],[15,28,6],[15,40,8],[7,48,12]];
+const GIF_LADDER = [[255,0,1],[255,6,1],[127,8,1],[127,8,2],[63,12,2],[63,12,3],[31,16,3],[31,16,4],[15,24,4],[15,24,6],[15,32,8]];
+const LADDER_FPS = [[255,0,1],[255,6,1],[127,8,1],[63,10,1],[31,14,1],[31,18,1],[31,18,2]];   // frame penuh, warna turun
+const LADDER_COL = [[255,0,1],[255,0,2],[255,4,2],[255,4,3],[127,8,3],[127,8,4],[63,12,4],[63,12,6]];  // warna tinggi, frame jarang
 const yieldUI = () => new Promise(r => setTimeout(r));
 
 function lzwDec(mc, data, npix){
@@ -657,18 +665,30 @@ function buildPal(hist, n){
     for (let j = 0; j < bx.length - 1; j++) { acc += hist[bx[j]]; if (acc * 2 >= tot) { cut = j + 1; break; } }
     boxes.splice(bi, 1, bx.slice(0, cut), bx.slice(cut));
   }
-  const pal = new Uint8Array(boxes.length * 3);
+  const m = boxes.length, cr = new Float64Array(m), cg = new Float64Array(m), cb = new Float64Array(m);
   boxes.forEach((bx, i) => {
     let w = 0, r = 0, g = 0, b = 0;
     for (const e of bx) { const c = hist[e]; w += c; r += ch(e, 10) * c; g += ch(e, 5) * c; b += ch(e, 0) * c; }
-    pal[i * 3] = Math.round(r / w * 255 / 31); pal[i * 3 + 1] = Math.round(g / w * 255 / 31); pal[i * 3 + 2] = Math.round(b / w * 255 / 31);
+    cr[i] = r / w; cg[i] = g / w; cb[i] = b / w;
   });
+  // k-means singkat: geser tiap warna palet ke rata-rata piksel terdekatnya (warna lebih setia, tidak kusam)
+  for (let it = 0; it < 3; it++) {
+    const sw = new Float64Array(m), sr = new Float64Array(m), sg = new Float64Array(m), sb = new Float64Array(m);
+    for (const e of ent) {
+      const r = ch(e, 10), g = ch(e, 5), b = ch(e, 0), c = hist[e]; let best = 0, bd = 1e9;
+      for (let j = 0; j < m; j++) { const dr = r - cr[j], dg = g - cg[j], db = b - cb[j], d = dr * dr + dg * dg + db * db; if (d < bd) { bd = d; best = j; } }
+      sw[best] += c; sr[best] += r * c; sg[best] += g * c; sb[best] += b * c;
+    }
+    for (let j = 0; j < m; j++) if (sw[j]) { cr[j] = sr[j] / sw[j]; cg[j] = sg[j] / sw[j]; cb[j] = sb[j] / sw[j]; }
+  }
+  const pal = new Uint8Array(m * 3);
+  for (let j = 0; j < m; j++) { pal[j * 3] = Math.min(255, Math.round(cr[j] * 8 + 4)); pal[j * 3 + 1] = Math.min(255, Math.round(cg[j] * 8 + 4)); pal[j * 3 + 2] = Math.min(255, Math.round(cb[j] * 8 + 4)); }
   return pal;
 }
 function buildLut(pal){
   const lut = new Uint8Array(32768), m = pal.length / 3;
   for (let i = 0; i < 32768; i++) {
-    const r = ((i >> 10) & 31) * 255 / 31, g = ((i >> 5) & 31) * 255 / 31, b = (i & 31) * 255 / 31;
+    const r = ((i >> 10) & 31) * 8 + 4, g = ((i >> 5) & 31) * 8 + 4, b = (i & 31) * 8 + 4;
     let best = 0, bd = 1e9;
     for (let j = 0; j < m; j++) {
       const dr = r - pal[j * 3], dg = g - pal[j * 3 + 1], db = b - pal[j * 3 + 2], d = dr * dr + dg * dg + db * db;
@@ -736,17 +756,21 @@ function encodeGif(fr, step, n, tol, pal, lut){
 async function optimizeGif(u, say){
   return optimizeFrames(await decodeGif(u, n => say(`Membaca frame… ${n}`)), say);
 }
-async function optimizeFrames(fr, say){
-  if (!fr.length) throw new Error('tidak ada frame');
+async function optimizeFrames(all, say, ladder = GIF_LADDER, trim = false){
+  if (!all.length) throw new Error('tidak ada frame');
   const hist = new Uint32Array(32768);
-  for (const f of fr) for (let o = 0; o < f.px.length; o += 8) hist[(f.px[o] >> 3) << 10 | (f.px[o + 1] >> 3) << 5 | f.px[o + 2] >> 3]++;
+  for (const f of all) for (let o = 0; o < f.px.length; o += 8) hist[(f.px[o] >> 3) << 10 | (f.px[o + 1] >> 3) << 5 | f.px[o + 2] >> 3]++;
   const cache = {};
-  for (const [n, tol, step] of GIF_LADDER) {
-    say(`Mengompres… ${n} warna, tiap ${step} frame`);
-    await yieldUI();
-    if (!cache[n]) { const pal = buildPal(hist, n); cache[n] = {pal, lut: buildLut(pal)}; }
-    const r = encodeGif(fr, step, n, tol, cache[n].pal, cache[n].lut);
-    if (r) return {data: r, n, step, frames: Math.ceil(fr.length / step), src: fr.length, cut: fr.cut};
+  // trim: jika belum muat, potong durasi dari belakang (video saja) daripada membuat warna jadi kusam
+  for (const frac of trim ? [1, .75, .55, .4, .3] : [1]) {
+    const fr = frac < 1 ? all.slice(0, Math.max(2, Math.round(all.length * frac))) : all;
+    for (const [n, tol, step] of ladder) {
+      say(`Mengompres… ${n} warna, tiap ${step} frame` + (frac < 1 ? `, durasi ${Math.round(frac * 100)}%` : ''));
+      await yieldUI();
+      if (!cache[n]) { const pal = buildPal(hist, n); cache[n] = {pal, lut: buildLut(pal)}; }
+      const r = encodeGif(fr, step, n, tol, cache[n].pal, cache[n].lut);
+      if (r) return {data: r, n, step, frames: Math.ceil(fr.length / step), src: all.length, kept: fr.length, cut: all.cut};
+    }
   }
   return null;
 }
@@ -835,6 +859,7 @@ async function grabFrames(v, start, dur, fps, say){
   }
   return fr;
 }
+$('gMax').onchange = e => { GIF_MAX = +e.target.value * 1024; glog(`Batas GIF ${e.target.value} KB. Harus sama dengan GIF_MAX_BYTES di Config.h firmware.`); };
 $('vidFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -844,9 +869,9 @@ $('vidFile').onchange = async e => {
   try {
     const fps = +$('vFps').value, dur = +$('vDur').value;
     const fr = await videoFrames(url, Math.max(0, +$('vStart').value || 0), dur, fps, glog);
-    const r = await optimizeFrames(fr, glog);
-    if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; kurangi durasi atau FPS`);
-    setGif(r.data, ` · dari video (${r.n} warna, ${r.frames} frame)`);
+    const r = await optimizeFrames(fr, glog, $('vPrio').value === 'fps' ? LADDER_FPS : LADDER_COL, true);
+    if (!r) throw new Error(`hasil tidak muat ${GIF_MAX / 1024} KB; naikkan batas ukuran atau kurangi durasi`);
+    setGif(r.data, ` · dari video (${r.n} warna, ${r.frames} frame${r.kept < r.src ? `, durasi dipotong ${Math.round(r.kept / r.src * 100)}%` : ''}, ±${(r.frames / (r.kept / fps)).toFixed(0)} fps)`);
   } catch (err) { glog('Gagal mengubah video: ' + err.message, 'bad'); }
   URL.revokeObjectURL(url); busy = false; $('gbar').value = 0; syncUI();
 };
