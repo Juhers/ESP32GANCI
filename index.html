@@ -103,11 +103,10 @@
   .set{display:grid;gap:12px;margin-top:12px;font-size:.88rem}
   .set label{display:flex;align-items:center;justify-content:space-between;gap:10px}
   select{font:inherit;font-size:.88rem;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);max-width:62%}
-  .gifprev{display:block;width:100%;max-width:240px;aspect-ratio:1/1;object-fit:contain;background:#000;border-radius:8px;margin:0 auto 10px}
-  .gifprev[hidden]{display:none}
   .btn.full{display:flex;width:100%;margin-top:8px}
-  .gedit{margin-bottom:12px}
-  .gscreen{max-width:360px;margin:0 auto 10px}
+  .gprev{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:#000;pointer-events:none}
+  .gprev[hidden]{display:none}
+  #gcv{aspect-ratio:1/1}
   #gcv{width:100%;display:block;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;outline:none}
   #gcv.grabbing{cursor:grabbing}
   #gcv:focus-visible{box-shadow:0 0 0 3px var(--ac) inset}
@@ -186,12 +185,22 @@
     </details>
   </section>
 
-  <section class="panel" aria-label="Animasi GIF latar">
-    <h2>Animasi GIF (latar layar musik)</h2>
-    <div class="gedit" id="gedit" hidden>
-      <div class="screen gscreen">
+  <section id="gifTab" aria-label="Animasi GIF latar">
+    <div class="fob" id="gfob" aria-label="Pratinjau layar GIF">
+      <div class="screen">
         <canvas id="gcv" tabindex="0" aria-label="Area tampilan GIF. Geser untuk memindahkan gambar, plus dan minus untuk zoom."></canvas>
+        <img id="gifPrev" class="gprev" alt="Hasil GIF" hidden>
+        <button class="empty" id="gempty" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5-8 8"/></svg>
+          <span>Pilih GIF</span>
+          <small>atau video dari galeri</small>
+        </button>
       </div>
+      <p class="size-tag" id="gsizeTag">240 × 240 piksel</p>
+    </div>
+    <p class="hint" id="ghint">Animasi latar layar musik. Pilih GIF atau video, lalu atur bagian yang tampil.</p>
+
+    <section class="panel" id="gedit" aria-label="Atur GIF">
       <div class="zoomrow">
         <button class="ico" id="gzout" type="button" aria-label="Perkecil" disabled>−</button>
         <input id="gzoom" type="range" min="0" max="1000" value="0" aria-label="Zoom GIF" disabled>
@@ -203,39 +212,44 @@
         <button id="gfit" type="button" disabled>Muat semua</button>
         <button id="gbuild" class="pri" type="button" disabled>Buat GIF</button>
       </div>
-    </div>
-    <img id="gifPrev" class="gifprev" alt="Hasil GIF" hidden>
-    <div class="grid3">
-      <label class="btn" for="gifFile">Pilih GIF</label>
-      <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
-      <button id="gifClear" type="button" disabled>Hapus GIF</button>
-    </div>
-    <input id="gifFile" type="file" accept="image/gif" hidden>
-    <label class="btn full" for="vidFile">Video dari galeri → GIF</label>
-    <input id="vidFile" type="file" accept="video/*" hidden>
-    <details>
-      <summary>Pengaturan GIF &amp; video</summary>
-      <div class="set">
-        <label>Batas ukuran GIF
-          <select id="gMax"><option value="64">64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option><option value="384">384 KB</option><option value="512" selected>512 KB</option><option value="768">768 KB</option><option value="1024">1024 KB</option></select>
-        </label>
-        <label>Ukuran GIF
-          <select id="gSize"><option value="240x240" selected>240 × 240 (layar penuh)</option><option value="240x160">240 × 160 (hemat ukuran)</option></select>
-        </label>
-        <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
-        <label>Durasi video
-          <select id="vDur"><option value="1">1 detik</option><option value="2">2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6" selected>6 detik</option></select>
-        </label>
-        <label>Frame per detik
-          <select id="vFps"><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="20">20</option><option value="25">25</option><option value="33" selected>33</option></select>
-        </label>
-        <label>Prioritas
-          <select id="vPrio"><option value="fps">Gerakan mulus (warna dikurangi)</option><option value="col" selected>Warna bagus (frame dijarangkan)</option></select>
-        </label>
+      <div class="grid2">
+        <label class="btn" for="gifFile">Pilih GIF</label>
+        <label class="btn" for="vidFile">Video → GIF</label>
       </div>
-    </details>
-    <progress id="gbar" value="0" max="1"></progress>
-    <div id="glog" role="status">Pilih GIF atau video, atur bagian yang tampil (geser, cubit atau gulir untuk zoom), lalu tekan "Buat GIF". Hasil yang melebihi batas ukuran dikompres otomatis.</div>
+      <input id="gifFile" type="file" accept="image/gif" hidden>
+      <input id="vidFile" type="file" accept="video/*" hidden>
+    </section>
+
+    <section class="panel" aria-label="Kirim GIF ke gantungan">
+      <div class="grid2">
+        <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
+        <button id="gifClear" type="button" disabled>Hapus GIF</button>
+      </div>
+      <progress id="gbar" value="0" max="1"></progress>
+      <div id="glog" role="status">Pilih GIF atau video, atur bagian yang tampil (geser, cubit atau gulir untuk zoom), lalu tekan "Buat GIF". Hasil yang melebihi batas ukuran dikompres otomatis.</div>
+
+      <details>
+        <summary>Pengaturan GIF &amp; video</summary>
+        <div class="set">
+          <label>Batas ukuran GIF
+            <select id="gMax"><option value="64">64 KB</option><option value="96">96 KB</option><option value="128">128 KB</option><option value="192">192 KB</option><option value="256">256 KB</option><option value="384">384 KB</option><option value="512" selected>512 KB</option><option value="768">768 KB</option><option value="1024">1024 KB</option></select>
+          </label>
+          <label>Ukuran GIF
+            <select id="gSize"><option value="240x240" selected>240 × 240 (layar penuh)</option><option value="240x160">240 × 160 (hemat ukuran)</option></select>
+          </label>
+          <label>Mulai dari detik ke <input id="vStart" type="number" min="0" step="0.5" value="0"></label>
+          <label>Durasi video
+            <select id="vDur"><option value="1">1 detik</option><option value="2">2 detik</option><option value="3">3 detik</option><option value="4">4 detik</option><option value="6" selected>6 detik</option></select>
+          </label>
+          <label>Frame per detik
+            <select id="vFps"><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="20">20</option><option value="25">25</option><option value="33" selected>33</option></select>
+          </label>
+          <label>Prioritas
+            <select id="vPrio"><option value="fps">Gerakan mulus (warna dikurangi)</option><option value="col" selected>Warna bagus (frame dijarangkan)</option></select>
+          </label>
+        </div>
+      </details>
+    </section>
   </section>
 
   <p class="note">Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak mendukung Web Bluetooth.</p>
@@ -983,6 +997,7 @@ function gDraw(){
 }
 function gSync(){
   const has = !!gsrc;
+  $('gempty').hidden = has;
   ['gzoom','gzin','gzout','gfill','gfit'].forEach(i => $(i).disabled = !has);
   if (has) {
     const mz = gMinZoom();
@@ -990,7 +1005,14 @@ function gSync(){
     $('gzval').textContent = fmtZ(gz);
   }
 }
-function gChanged(){ if (!gsrc) return; gClamp(); gDraw(); gSync(); }
+function gChanged(){
+  if (!gsrc) return;
+  if (gifData && !busy) {          // tampilan diubah -> hasil lama tidak berlaku lagi
+    gifData = null; $('gifPrev').hidden = true;
+    glog('Tampilan diubah. Tekan "Buat GIF" lagi.'); syncUI();
+  }
+  gClamp(); gDraw(); gSync();
+}
 function gZoomAt(z, px, py){
   const mz = gMinZoom(); z = Math.min(GMAXZ, Math.max(mz, z));
   const r = z / gz;
@@ -1004,7 +1026,7 @@ function gLayout(){
   if (gsrc) gClamp();
   gDraw();
 }
-new ResizeObserver(() => { if (!$('gedit').hidden) gLayout(); }).observe(gcv);
+new ResizeObserver(() => gLayout()).observe(gcv);
 
 // ---- gestur: geser, cubit, gulir, keyboard
 const gptr = new Map();
@@ -1141,11 +1163,14 @@ $('gMax').onchange = e => { GIF_MAX = +e.target.value * 1024; glog(`Batas GIF ${
 $('gSize').onchange = e => {
   const [w, h] = e.target.value.split('x').map(Number);
   GW = w; GH = h;
+  $('gsizeTag').textContent = `${GW} × ${GH} piksel`;
   gifData = null; $('gifPrev').hidden = true;
   if (gsrc) { gz = 1; gx = gy = .5; gLayout(); gChanged(); }
   glog(`Ukuran GIF ${GW}×${GH}. Atur tampilan, lalu tekan "Buat GIF" lagi. Pastikan firmware menggambar GIF dengan ukuran ini.`);
   syncUI();
 };
+
+$('gempty').onclick = () => $('gifFile').click();
 
 $('vidFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
@@ -1208,7 +1233,124 @@ $('gifClear').onclick = async () => {
   busy = false; syncUI();
 };
 
-layout(); syncUI();
+layout(); gLayout(); syncUI();
+</script>
+
+<script>
+/* UPGRADE UI GANTUNGAN MUSIK. Tempel satu kali, paling bawah sebelum penutup body, setelah script lama. */
+try {
+  var st = document.createElement('style');
+  st.id = 'ui-upgrade-css';
+  st.textContent = `
+  :root{ --r:18px; --shadow:0 1px 2px rgba(20,24,40,.06),0 8px 24px -12px rgba(20,24,40,.18); }
+  .wrap{ max-width:460px; padding-bottom:40px; }
+  .topbar{
+    position:sticky; top:0; z-index:30;
+    margin:0 -16px 18px; padding:max(10px,env(safe-area-inset-top)) 16px 10px;
+    display:flex; align-items:center; gap:10px; justify-content:space-between;
+    background:var(--bg);
+    border-bottom:1px solid var(--line);
+  }
+  .pill{
+    min-height:40px; padding:0 14px; border-radius:99px; font-size:.85rem; font-weight:600;
+    background:var(--surface); border:1px solid var(--line); max-width:58%; gap:8px;
+  }
+  .pill i{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
+  .pill.on i{background:var(--ok);box-shadow:0 0 0 4px rgba(18,128,92,.25)}
+  .pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tabs{display:flex;background:var(--soft);border-radius:12px;padding:3px;gap:2px}
+  .tabs button{min-height:34px;padding:0 16px;border-radius:9px;background:transparent;font-size:.85rem}
+  .tabs button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+  header{margin:8px 0 22px}
+  h1{font-size:1.7rem;letter-spacing:-.025em}
+  .fob{
+    width:min(100%,340px); padding:18px 18px 16px; border-radius:36px;
+    box-shadow:0 1px 0 rgba(255,255,255,.1) inset,0 24px 40px -18px rgba(0,0,0,.55);
+  }
+  .fob::before{
+    content:""; position:absolute; top:-12px; left:50%; width:34px; height:18px; margin-left:-17px;
+    border:4px solid var(--bezel); border-bottom:0; border-radius:18px 18px 0 0; z-index:-1;
+  }
+  .screen{border-radius:12px;box-shadow:0 0 0 2px #000,0 0 0 3px rgba(255,255,255,.08)}
+  .hint{margin-top:18px;font-size:.88rem}
+  .panel{border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-top:14px}
+  .panel h2{font-size:1rem;margin-bottom:12px}
+  button,.btn{min-height:48px;border-radius:12px}
+  button:active:not(:disabled),.btn:active{transform:scale(.97)}
+  button.pri{box-shadow:0 6px 16px -8px var(--ac)}
+  button.ico{width:48px;font-size:1.3rem}
+  .zoomrow input[type=range]{height:36px}
+  #log,#glog{padding:10px 12px;border-radius:10px;background:var(--soft);margin-top:12px;font-size:.86rem}
+  #log.ok,#glog.ok{background:rgba(18,128,92,.15)}
+  #log.bad,#glog.bad{background:rgba(198,47,59,.15)}
+  progress{height:10px}
+  .chip{display:none}
+  .conn{display:none}
+  [data-tab-hidden]{display:none!important}
+  .toast{
+    position:fixed; left:50%; bottom:max(20px,env(safe-area-inset-bottom)); z-index:50;
+    transform:translate(-50%,24px); opacity:0; pointer-events:none; max-width:min(92vw,420px);
+    padding:12px 16px; border-radius:14px; font-size:.9rem; font-weight:600;
+    background:var(--ink); color:var(--bg); box-shadow:0 12px 30px -10px rgba(0,0,0,.5);
+    transition:transform .25s,opacity .25s;
+  }
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .toast.bad{background:var(--bad);color:#fff}
+  .toast.ok{background:var(--ok);color:#fff}
+  `;
+  document.head.appendChild(st);
+} catch (e) { console.warn('CSS upgrade gagal', e); }
+
+try {
+(function boot(){
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot, {once: true}); return; }
+  var $ = function(id){ return document.getElementById(id); }, wrap = document.querySelector('.wrap');
+  if (!wrap) return;
+
+  var bar = document.createElement('div'); bar.className = 'topbar';
+  bar.innerHTML = '<button type="button" class="pill" id="pill" aria-label="Hubungkan atau putuskan gantungan"><i></i><span id="pillTxt">Hubungkan gantungan</span></button>' +
+    '<div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-t="foto">Foto</button><button type="button" role="tab" aria-selected="false" data-t="gif">GIF</button></div>';
+  wrap.insertBefore(bar, wrap.firstChild);
+
+  var gifPanel = document.querySelector('section[aria-label="Animasi GIF latar"]');
+  var photoEls = Array.prototype.filter.call(wrap.querySelectorAll('.fob, #hint, section.panel'), function(el){ return el !== gifPanel && !gifPanel.contains(el); });
+  function showTab(t){
+    photoEls.forEach(function(el){ if (t === 'foto') el.removeAttribute('data-tab-hidden'); else el.setAttribute('data-tab-hidden', ''); });
+    if (t === 'gif') gifPanel.removeAttribute('data-tab-hidden'); else gifPanel.setAttribute('data-tab-hidden', '');
+    bar.querySelectorAll('[role=tab]').forEach(function(b){ b.setAttribute('aria-selected', b.dataset.t === t); });
+    window.scrollTo(0, 0);
+    requestAnimationFrame(function(){ window.dispatchEvent(new Event('resize')); });
+  }
+  bar.querySelectorAll('[role=tab]').forEach(function(b){ b.onclick = function(){ showTab(b.dataset.t); }; });
+  showTab('foto');
+
+  var pill = $('pill');
+  pill.onclick = function(){ $('conn').click(); };
+  function syncPill(){
+    var on = $('chip').classList.contains('on');
+    pill.classList.toggle('on', on);
+    $('pillTxt').textContent = on ? $('chipTxt').textContent.replace('Terhubung · ', '') : 'Hubungkan gantungan';
+    pill.disabled = $('conn').disabled;
+  }
+  new MutationObserver(syncPill).observe($('chip'), {attributes: true, subtree: true, childList: true, characterData: true});
+  new MutationObserver(syncPill).observe($('conn'), {attributes: true});
+  syncPill();
+
+  var toast = document.createElement('div'); toast.className = 'toast'; toast.setAttribute('role', 'status');
+  document.body.appendChild(toast);
+  var tt;
+  function pop(el){
+    var k = el.classList.contains('ok') ? 'ok' : el.classList.contains('bad') ? 'bad' : '';
+    if (!k) return;
+    toast.textContent = el.textContent; toast.className = 'toast show ' + k;
+    clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 3500);
+    if (k === 'ok' && navigator.vibrate) navigator.vibrate(30);
+  }
+  ['log', 'glog'].forEach(function(id){
+    new MutationObserver(function(){ pop($(id)); }).observe($(id), {childList: true, attributes: true, attributeFilter: ['class']});
+  });
+})();
+} catch (e) { console.warn('JS upgrade gagal', e); }
 </script>
 </body>
 </html>
