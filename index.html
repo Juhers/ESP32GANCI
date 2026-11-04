@@ -715,8 +715,13 @@ const GIF_MAXFR = 300;
 const GIF_LADDER = [[255,0,1],[255,6,1],[127,8,1],[127,8,2],[63,12,2],[63,12,3],[31,16,3],[31,16,4],[15,24,4],[15,24,6],[15,32,8]];
 // Prioritas "Gerakan mulus": SEMUA frame dipertahankan (step = 1); yang dikorbankan hanya warna.
 // Toleransi besar membuat lebih banyak piksel dianggap tidak berubah (transparan) -> frame delta jauh lebih kecil.
-const LADDER_FPS = [[127,4,1],[63,8,1],[63,12,1],[31,14,1],[31,20,1],[15,24,1],[15,32,1]];
-const LADDER_COL = [[255,0,1],[255,0,2],[255,4,2],[255,4,3],[127,8,3],[127,8,4],[63,12,4],[63,12,6]];  // warna tinggi, frame jarang
+// Gerakan mulus: semua frame dipertahankan; mulai dari warna penuh, turun bertahap.
+const LADDER_FPS = [[255,0,1],[255,3,1],[255,6,1],[191,6,1],[127,6,1],[127,10,1],[63,12,1],[63,16,1],
+                    [31,20,1],[15,28,1],[15,40,1],[7,48,1],
+                    [15,32,2],[7,48,2],[7,64,2],[7,64,3],[3,64,4]];
+// Warna bagus: warna penuh, frame dijarangkan sedikit demi sedikit. Durasi tetap utuh.
+const LADDER_COL = [[255,0,1],[255,3,1],[255,0,2],[255,4,2],[255,6,2],[255,6,3],[191,8,3],[127,8,3],
+                    [127,8,4],[63,12,4],[63,12,6],[31,16,6],[15,24,8],[15,32,10],[7,48,12]];
 const yieldUI = () => new Promise(r => setTimeout(r));
 
 function lzwDec(mc, data, npix){
