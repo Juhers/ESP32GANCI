@@ -1159,7 +1159,17 @@ async function grabFrames(v, start, dur, fps, say, tf){
     await seekTo(v, start + i / fps);
     x.fillStyle = '#000'; x.fillRect(0, 0, GW, GH);
     x.drawImage(v, tf.x * GW - dw / 2, tf.y * GH - dh / 2, dw, dh);
-    fr.push({px: x.getImageData(0, 0, GW, GH).data, ms: 1000 / fps});
+    const px = x.getImageData(0, 0, GW, GH).data;
+    const pv = fr.length ? fr[fr.length - 1].px : null;
+    if (pv) {
+      const TH = 14;   // naikkan (misal 20) jika masih terlalu besar; turunkan jika gerakan halus hilang
+      for (let o = 0; o < px.length; o += 4) {
+        if (Math.abs(px[o] - pv[o]) + Math.abs(px[o + 1] - pv[o + 1]) + Math.abs(px[o + 2] - pv[o + 2]) <= TH) {
+          px[o] = pv[o]; px[o + 1] = pv[o + 1]; px[o + 2] = pv[o + 2];
+        }
+      }
+    }
+    fr.push({px, ms: 1000 / fps});
   }
   return fr;
 }
