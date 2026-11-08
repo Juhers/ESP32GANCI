@@ -95,8 +95,8 @@
   progress::-webkit-progress-bar{background:var(--soft)}
   progress::-webkit-progress-value{background:var(--ac);transition:width .1s}
   progress::-moz-progress-bar{background:var(--ac)}
-  #log,#glog{margin:10px 0 0;font-size:.88rem;min-height:1.3em;color:var(--mut);white-space:pre-wrap}
-  #log.ok,#glog.ok{color:var(--ok)} #log.bad,#glog.bad{color:var(--bad)}
+  #log,#glog,#clog{margin:10px 0 0;font-size:.88rem;min-height:1.3em;color:var(--mut);white-space:pre-wrap}
+  #log.ok,#glog.ok,#clog.ok{color:var(--ok)} #log.bad,#glog.bad,#clog.bad{color:var(--bad)}
 
   details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
   summary{cursor:pointer;font-size:.88rem;color:var(--mut)}
@@ -112,6 +112,15 @@
   #gcv:focus-visible{box-shadow:0 0 0 3px var(--ac) inset}
   input[type=number]{font:inherit;font-size:.88rem;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:5.5em;text-align:right}
   .note{margin:16px 4px 0;color:var(--mut);font-size:.78rem}
+  /* ---- tab Config: grup collapsible, label + hint, pratinjau ---- */
+  .cg{margin-top:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:0}
+  .cg>summary{padding:14px;font-weight:700;font-size:.95rem;color:var(--ink)}
+  .cg>.set{padding:0 14px 14px;margin-top:0}
+  .fl small{display:block;color:var(--mut);font-size:.76rem;line-height:1.3;margin-top:2px;font-weight:400}
+  .sg{margin:6px 0 0;font-size:.8rem;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .set input[type=color]{width:48px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex:none}
+  .set input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--ac)}
+  #pv{width:min(100%,300px);aspect-ratio:1/1;justify-self:center;border-radius:8px;background:#000;image-rendering:auto}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -228,10 +237,17 @@
     </section>
 
     <section class="panel" aria-label="Kirim GIF ke gantungan">
-      <div class="grid2">
-        <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
-        <button id="gifClear" type="button" disabled>Hapus GIF</button>
+      <div class="set" style="margin-top:0">
+        <label>Simpan ke slot GIF
+          <select id="gslot" aria-label="Slot GIF"></select>
+        </label>
       </div>
+      <div class="grid3">
+        <button id="gifSend" class="pri" type="button" disabled>Kirim GIF</button>
+        <button id="gifClear" type="button" disabled>Hapus slot ini</button>
+        <button id="gifClearAll" type="button" disabled>Hapus semua</button>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Beberapa GIF yang tersimpan berganti otomatis saat lagu terganti (atur di tab Config → GIF latar). Ruang flash terbatas: kecilkan batas ukuran GIF bila menyimpan banyak slot.</p>
       <progress id="gbar" value="0" max="1"></progress>
       <div id="glog" role="status">Pilih GIF atau video, atur bagian yang tampil (geser, cubit atau gulir untuk zoom), lalu tekan "Buat GIF". Hasil yang melebihi batas ukuran dikompres otomatis.</div>
 
@@ -259,6 +275,22 @@
     </section>
   </section>
 
+  <section id="cfgTab" aria-label="Pengaturan gantungan">
+    <section class="panel">
+      <div class="grid3">
+        <button id="cRead" type="button" disabled>Baca</button>
+        <button id="cSave" class="pri" type="button" disabled>Simpan</button>
+        <button id="cDef" type="button">Default</button>
+      </div>
+      <div id="clog" role="status">Hubungkan gantungan, lalu tekan Baca untuk memuat pengaturan saat ini.</div>
+      <p class="hint" style="margin:10px 0 0">Pengaturan tersimpan di flash gantungan dan tetap ada setelah restart. Tetap di <code>Config.h</code> (butuh compile ulang): pin, ukuran layar, nama BLE, jumlah slot &amp; batas ukuran file, <code>WAKE_LEVEL</code>, <code>OV_H</code>, <code>MARQ_MAX_W</code>.</p>
+    </section>
+    <div id="cfgForm"></div>
+    <section class="panel">
+      <button id="cSave2" class="pri btn full" type="button" disabled>Simpan ke gantungan</button>
+    </section>
+  </section>
+
   <p class="note">Butuh Chrome/Edge (desktop/Android) atau Bluefy (iOS). Safari iOS biasa tidak mendukung Web Bluetooth.</p>
 </main>
 
@@ -268,9 +300,11 @@
  *   1. Atur crop foto 240x240  2. Hubungkan ke "Gantungan..."  3. Kirim JPEG lewat GATT
  *
  * Protokol (harus sama dengan Image_Reader.cpp di firmware), little-endian:
- *   [01][size u32][crc32 u32][jenis u8][slot u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar; slot foto 0..SLOTS-1)
+ *   [01][size u32][crc32 u32][jenis u8][slot u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar; slot 0..SLOTS-1 / 0..GIF_SLOTS-1)
  *   [02][seq u16][payload<=100B]         DATA
- *   [03] END   [04] ABORT   [05][jenis u8][slot u8] CLEAR   (slot 255 = semua foto)
+ *   [03] END   [04] ABORT   [05][jenis u8][slot u8] CLEAR   (slot 255 = semua slot jenis itu)
+ *   [07][CFG_BYTES pengaturan] SET pengaturan, [08] GET pengaturan -> balasan status 12 dipecah:
+ *   [12][idx][total][<=16 byte] (dirakit di onNotify; tiap notifikasi <= 19 byte agar aman di MTU 23)
  *   [06][size u32][crc32 u32][jenis u8]  RESUME  (tanya: sudah berapa byte yang diterima untuk file ini?)
  * Status (notify): 1 menerima, 2 OK, 8 terhapus, 3-7/9/10 = error (lihat tabel ERR),
  *   11 = balasan RESUME, 5 byte: [11][byte_diterima u32]. 0 = mulai dari awal.
@@ -286,6 +320,7 @@ const KIND_JPEG = 0, KIND_GIF = 1;
 let GIF_MAX = 512 * 1024;    // HARUS sama dengan GIF_MAX_BYTES di Config.h (firmware)
 const MAX_BYTES = 48 * 1024;   // HARUS sama dengan IMG_MAX_BYTES di Config.h (firmware)
 const SLOTS = 5;               // HARUS sama dengan IMG_SLOTS di Config.h (firmware)
+const GIF_SLOTS = 5;           // HARUS sama dengan GIF_SLOTS di Config.h (firmware)
 const CHUNK = 100;             // payload per paket (aman untuk MTU kecil)
 const OUT = 240;               // ukuran layar gantungan (foto JPEG selalu 240x240)
 const MAXZ = 6;                // zoom maksimum relatif terhadap "isi layar"
@@ -308,10 +343,13 @@ let GW = OUT, GH = OUT;
 
 const $ = id => document.getElementById(id);
 for (let i = 0; i < SLOTS; i++) $('slot').add(new Option('Foto ' + (i + 1), i));
+for (let i = 0; i < GIF_SLOTS; i++) $('gslot').add(new Option('GIF ' + (i + 1), i));
 const slotNo = () => +$('slot').value;
+const gslotNo = () => +$('gslot').value;
 const cv = $('cv'), ctx = cv.getContext('2d');
 function log(t, k){ const l = $('log'); l.textContent = t; l.className = k || ''; }
 function glog(t, k){ const l = $('glog'); l.textContent = t; l.className = k || ''; }
+function clog(t, k){ const l = $('clog'); l.textContent = t; l.className = k || ''; }
 const fmtZ = z => z.toFixed(1).replace('.', ',') + '×';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -370,9 +408,14 @@ function syncUI(){
   $('send').disabled = busy || !(dataC && src);
   $('clear').disabled = busy || !dataC;
   $('clearAll').disabled = busy || !dataC;
+  $('cRead').disabled = busy || !dataC;
+  $('cSave').disabled = busy || !dataC;
+  $('cSave2').disabled = busy || !dataC;
   $('slot').disabled = busy;
+  $('gslot').disabled = busy;
   $('gifSend').disabled = busy || !(dataC && gifData);
   $('gifClear').disabled = busy || !dataC;
+  $('gifClearAll').disabled = busy || !dataC;
   $('gbuild').disabled = busy || !gsrc;
   $('conn').disabled = busy || !btOK;
 }
@@ -527,11 +570,31 @@ function setChip(on, name){
 }
 
 let lastOff = 0;   // byte yang sudah diterima ESP32 (dari balasan status 11)
+let lastCfg = null;   // pengaturan terakhir dari ESP32 (status 12, sudah lengkap)
+let cfgAsm = null;    // perakitan balasan pengaturan yang dipecah: {tot, buf, got}
 function onNotify(e){
-  const v = e.target.value;
+  const v = e.target.value, st = v.getUint8(0);
+  if (st === 12) {                                  // [12][idx][total][<=16 byte]
+    if (v.byteLength < 4) return;
+    const idx = v.getUint8(1), tot = v.getUint8(2), n = v.byteLength - 3;
+    if (idx === 0 || !cfgAsm || cfgAsm.tot !== tot) cfgAsm = {tot, buf: new Uint8Array(CFG_BYTES), got: 0};
+    if (idx * CFG_FRAG + n <= CFG_BYTES) { cfgAsm.buf.set(new Uint8Array(v.buffer, v.byteOffset + 3, n), idx * CFG_FRAG); cfgAsm.got++; }
+    if (cfgAsm.got >= cfgAsm.tot) { lastCfg = cfgAsm.buf; cfgAsm = null; lastStatus = 12; if (waiter) waiter(); }
+    else lastStatus = -2;                           // potongan belum lengkap: jangan bangunkan penunggu
+    return;
+  }
   lastOff = v.byteLength >= 5 ? v.getUint32(1, true) : 0;
-  lastStatus = v.getUint8(0);
+  lastStatus = st;
   if (waiter) waiter();
+}
+
+// Setelah terhubung: muat pengaturan gantungan ke form (firmware lama tidak membalas -> pesan saja)
+async function cfgAuto(){
+  if (busy || !dataC) return;
+  busy = true; syncUI();
+  try { await cfgExchange(new Uint8Array([8]), 3000); clog('Pengaturan dimuat dari gantungan.', 'ok'); }
+  catch (e) { clog('Pengaturan tidak bisa dibaca: ' + cfgTimeoutMsg(e)); }
+  busy = false; syncUI();
 }
 
 $('conn').onclick = async () => {
@@ -550,6 +613,7 @@ $('conn').onclick = async () => {
     setChip(true, dev.name || 'Gantungan');
     log(src ? 'Terhubung. Siap mengirim.' : 'Terhubung. Pilih foto, lalu kirim.', 'ok');
     syncUI();
+    cfgAuto();
   } catch (e) {
     log(e.name === 'NotFoundError' ? 'Dibatalkan, atau perangkat "Gantungan…" tidak ditemukan.' : 'Gagal terhubung: ' + e.message, 'bad');
   }
@@ -618,7 +682,7 @@ async function reconnect(say){
 // null = belum diketahui, true = firmware mendukung RESUME, false = firmware lama (selalu mulai dari awal)
 let resumeSupported = null;
 async function begin(kind, data, crc, fresh){
-  const hdr = new Uint8Array(11); hdr[9] = kind; hdr[10] = kind === KIND_JPEG ? slotNo() : 0;
+  const hdr = new Uint8Array(11); hdr[9] = kind; hdr[10] = kind === KIND_JPEG ? slotNo() : gslotNo();
   const dv = new DataView(hdr.buffer);
   dv.setUint32(1, data.length, true); dv.setUint32(5, crc, true);
 
@@ -689,7 +753,7 @@ async function transfer(kind, data, bar, say){
   }
 }
 
-async function clearOnDevice(kind, slot = 255){      // slot 255 = semua foto (GIF: diabaikan)
+async function clearOnDevice(kind, slot = 255){      // slot 255 = semua slot jenis itu
   lastStatus = -1;
   const p = waitStatus([8], 4000);
   await dataC.writeValueWithResponse(new Uint8Array([5, kind, slot]));
@@ -725,6 +789,243 @@ $('clearAll').onclick = async () => {
   catch (e) { log('Gagal: ' + e.message, 'bad'); }
   busy = false; syncUI();
 };
+
+// ================= PENGATURAN GANTUNGAN (Config dari web) =================
+// Seluruh paket dibuat dari SATU tabel (CFG_FIELDS). Urutan, ukuran (sz), batas (lo..hi), z (0 = nonaktif) dan s (bertanda)
+// HARUS sama dengan tabel FIELDS di Settings.cpp (firmware). Paket SET = [07] + CFG_BYTES byte little-endian.
+// Balasan (status 12) datang dalam beberapa potongan [12][idx][total][<=16 byte] dan dirakit di onNotify().
+const OV_H = 90;     // HARUS sama dengan OV_H di UI_Config.h (batas baris posisi teks)
+const FONT_OPT = [[1, 'Kecil (8 px)'], [2, 'Sedang (16 px)'], [4, 'Besar (26 px)']];
+const CFG_GROUPS = [
+  {id: 'foto',   t: 'Slide show foto', open: 1},
+  {id: 'layar',  t: 'Layar & daya', open: 1},
+  {id: 'sensor', t: 'Sensor getar & deep sleep'},
+  {id: 'gif',    t: 'GIF latar & rotasi GIF', open: 1},
+  {id: 'tampil', t: 'Tampilan musik (warna, font, posisi, running text)'},
+  {id: 'sistem', t: 'Sistem & uji'},
+];
+// t: b = centang, n = angka, r = slider, c = warna (RGB565), s = pilihan. fmt: format angka slider.
+const CFG_FIELDS = [
+  // ---- slide show foto
+  {k: 'rotEn',  g: 'foto', t: 'b', sz: 1, lo: 0, hi: 1, def: 1, l: 'Slide show aktif', h: 'Foto bergantian saat tidak ada musik'},
+  {k: 'wake',   g: 'foto', t: 'b', sz: 1, lo: 0, hi: 1, def: 1, l: 'Ganti foto tiap bangun dari deep sleep'},
+  {k: 'rnd',    g: 'foto', t: 'b', sz: 1, lo: 0, hi: 1, def: 0, l: 'Urutan foto acak'},
+  {k: 'rot',    g: 'foto', t: 'n', sz: 2, lo: 2, hi: 3600, z: 1, def: 10, l: 'Ganti foto tiap … detik', h: '0 = tidak otomatis'},
+  {k: 'pause',  g: 'foto', t: 'n', sz: 2, lo: 1, hi: 3600, z: 1, def: 1, l: 'Tampilkan foto … detik setelah musik di-pause', h: '0 = nonaktif'},
+  // ---- layar & daya
+  {k: 'bl',     g: 'layar', t: 'r', sz: 1, lo: 5, hi: 255, def: 100, fmt: 'pct', l: 'Kecerahan'},
+  {k: 'ssl',    g: 'layar', t: 'b', sz: 1, lo: 0, hi: 1, def: 0, l: 'Layar mati otomatis'},
+  {k: 'soff',   g: 'layar', t: 'n', sz: 2, lo: 5, hi: 3600, def: 20, l: 'Layar mati … detik setelah lagu terganti'},
+  {k: 'ioff',   g: 'layar', t: 'n', sz: 2, lo: 5, hi: 3600, z: 1, def: 0, l: 'Layar mati … detik setelah foto tampil', h: '0 = tetap menyala'},
+  {k: 'idle',   g: 'layar', t: 'n', sz: 2, lo: 5, hi: 3600, z: 1, def: 15, l: 'Deep sleep setelah … detik tanpa getaran', h: '0 = tidak pernah deep sleep'},
+  {k: 'cpu',    g: 'layar', t: 's', sz: 1, lo: 80, hi: 160, def: 80, o: [[80, '80 MHz (hemat)'], [160, '160 MHz']], l: 'CPU saat layar mati', h: 'Berlaku saat layar mati berikutnya'},
+  // ---- sensor getar
+  {k: 'vms',    g: 'sensor', t: 'n', sz: 2, lo: 500, hi: 10000, def: 3000, l: 'Jendela validasi gerakan (ms)', h: 'Lama menghitung getaran setelah bangun dari deep sleep'},
+  {k: 'minp',   g: 'sensor', t: 'n', sz: 1, lo: 1, hi: 100, def: 15, l: 'Pulsa minimum agar gerakan valid', h: 'Turunkan bila langsung tidur lagi saat disentuh'},
+  {k: 'deb',    g: 'sensor', t: 'n', sz: 1, lo: 1, hi: 250, def: 30, l: 'Debounce pulsa (ms)', h: 'Pulsa lebih rapat dari ini diabaikan'},
+  {k: 'swp',    g: 'sensor', t: 'b', sz: 1, lo: 0, hi: 1, def: 1, l: 'Tetap deep sleep walau lagu diputar', h: 'Matikan agar BLE tidak putus saat musik berjalan'},
+  // ---- sistem
+  {k: 'demo',   g: 'sistem', t: 'b', sz: 1, lo: 0, hi: 1, def: 0, l: 'Mode demo (lagu palsu)', h: 'Tampil lagu contoh bila tidak ada lagu dari iPhone — untuk menguji tampilan & rotasi'},
+  {k: 'swait',  g: 'sistem', t: 'n', sz: 2, lo: 0, hi: 10000, def: 4000, l: 'Tunggu Serial Monitor saat boot (ms)', h: 'Berlaku saat boot berikutnya'},
+  {k: 'sset',   g: 'sistem', t: 'n', sz: 2, lo: 0, hi: 10000, def: 1500, l: 'Jeda setelah Serial siap (ms)', h: 'Berlaku saat boot berikutnya'},
+  // ---- GIF
+  {k: 'gEn',    g: 'gif', t: 'b', sz: 1, lo: 0, hi: 1, def: 1, l: 'Ganti GIF saat lagu terganti', h: 'Butuh minimal 2 GIF tersimpan (tab GIF)'},
+  {k: 'gRnd',   g: 'gif', t: 'b', sz: 1, lo: 0, hi: 1, def: 0, l: 'Urutan GIF acak'},
+  {k: 'gEvery', g: 'gif', t: 'n', sz: 1, lo: 1, hi: 50, def: 1, l: 'Ganti GIF tiap … lagu', h: '1 = setiap lagu terganti'},
+  {k: 'gSec',   g: 'gif', t: 'n', sz: 2, lo: 5, hi: 3600, z: 1, def: 0, l: 'Ganti GIF juga tiap … detik saat lagu diputar', h: '0 = hanya saat lagu terganti'},
+  {k: 'gPlay',  g: 'gif', t: 'b', sz: 1, lo: 0, hi: 1, def: 1, l: 'GIF bergerak hanya saat lagu diputar'},
+  {k: 'gSpeed', g: 'gif', t: 'r', sz: 2, lo: 25, hi: 400, def: 100, fmt: 'pct1', l: 'Kecepatan animasi GIF'},
+  {k: 'gox',    g: 'gif', t: 'n', sz: 2, s: 1, lo: -240, hi: 240, def: 0, l: 'Geser GIF horizontal (px)', h: 'Negatif = ke kiri'},
+  {k: 'goy',    g: 'gif', t: 'n', sz: 2, s: 1, lo: -240, hi: 240, def: 0, l: 'Geser GIF vertikal (px)', h: 'Negatif = ke atas'},
+  // ---- tampilan musik: warna
+  {k: 'cTitle', g: 'tampil', sg: 'Warna', t: 'c', sz: 2, lo: 0, hi: 65535, def: 0xFFFF, l: 'Judul & ikon play/pause'},
+  {k: 'cArtist', g: 'tampil', t: 'c', sz: 2, lo: 0, hi: 65535, def: 0xEF5D, l: 'Artis & waktu'},
+  {k: 'cBarBg', g: 'tampil', t: 'c', sz: 2, lo: 0, hi: 65535, def: 0x4A69, l: 'Latar progress bar'},
+  {k: 'cBarFg', g: 'tampil', t: 'c', sz: 2, lo: 0, hi: 65535, def: 0xFFFF, l: 'Isi progress bar'},
+  // ---- gradien & font
+  {k: 'grad',   g: 'tampil', sg: 'Gradien & font', t: 'r', sz: 1, lo: 0, hi: 32, def: 3, l: 'Kecerahan GIF paling bawah', h: '0 = hitam, 32 = asli (tanpa gradien)'},
+  {k: 'fTitle', g: 'tampil', t: 's', sz: 1, lo: 1, hi: 4, def: 4, o: FONT_OPT, l: 'Font judul'},
+  {k: 'fArtist', g: 'tampil', t: 's', sz: 1, lo: 1, hi: 4, def: 2, o: FONT_OPT, l: 'Font artis'},
+  {k: 'fTime',  g: 'tampil', t: 's', sz: 1, lo: 1, hi: 4, def: 2, o: FONT_OPT, l: 'Font waktu'},
+  // ---- posisi (baris dihitung dari atas area gradien)
+  {k: 'mar',    g: 'tampil', sg: 'Posisi (px dari atas area gradien)', t: 'n', sz: 1, lo: 0, hi: 60, def: 10, l: 'Margin kiri/kanan'},
+  {k: 'rArtist', g: 'tampil', t: 'n', sz: 1, lo: 0, hi: OV_H - 1, def: 14, l: 'Baris artis'},
+  {k: 'rTitle', g: 'tampil', t: 'n', sz: 1, lo: 0, hi: OV_H - 1, def: 35, l: 'Baris judul'},
+  {k: 'rIcon',  g: 'tampil', t: 'n', sz: 1, lo: 0, hi: OV_H - 1, def: 40, l: 'Baris ikon play/pause'},
+  {k: 'iSize',  g: 'tampil', t: 'n', sz: 1, lo: 6, hi: 40, def: 14, l: 'Tinggi ikon (px)'},
+  {k: 'rTime',  g: 'tampil', t: 'n', sz: 1, lo: 0, hi: OV_H - 1, def: 62, l: 'Baris waktu'},
+  {k: 'tH',     g: 'tampil', t: 'n', sz: 1, lo: 8, hi: 40, def: 18, l: 'Tinggi baris waktu (px)'},
+  {k: 'rBar',   g: 'tampil', t: 'n', sz: 1, lo: 0, hi: OV_H - 1, def: 84, l: 'Baris progress bar'},
+  {k: 'bH',     g: 'tampil', t: 'n', sz: 1, lo: 1, hi: 20, def: 4, l: 'Tinggi progress bar (px)'},
+  // ---- running text judul
+  {k: 'mStart', g: 'tampil', sg: 'Running text judul', t: 'n', sz: 2, lo: 0, hi: 30000, def: 4000, l: 'Diam di awal (ms)'},
+  {k: 'mEnd',   g: 'tampil', t: 'n', sz: 2, lo: 0, hi: 30000, def: 1000, l: 'Diam di ujung (ms)'},
+  {k: 'mPx',    g: 'tampil', t: 'n', sz: 1, lo: 1, hi: 20, def: 2, l: 'Geser … px tiap langkah'},
+  {k: 'mMs',    g: 'tampil', t: 'n', sz: 1, lo: 5, hi: 250, def: 30, l: 'Jeda antar langkah (ms)'},
+];
+const CFG_BYTES = CFG_FIELDS.reduce((a, f) => a + f.sz, 0);   // HARUS = SETTINGS_BYTES di Settings.h
+const CFG_FRAG = 16;                                          // byte data per potongan balasan (HARUS = CFG_FRAG firmware)
+const CFG_DEF = Object.fromEntries(CFG_FIELDS.map(f => [f.k, f.def]));   // sama dengan nilai awal Config.h / UI_Config.h
+
+// Batasi ke rentang yang sama dengan firmware (z: nilai <= 0 berarti nonaktif)
+function cfgClamp(f, v){
+  v = Math.round(+v);
+  if (!isFinite(v)) v = f.def;
+  if (f.z && v <= 0) return 0;
+  return Math.max(f.lo, Math.min(f.hi, v));
+}
+function cfgPack(c){
+  const b = new Uint8Array(1 + CFG_BYTES), dv = new DataView(b.buffer);
+  b[0] = 7;
+  let o = 1;
+  for (const f of CFG_FIELDS) {
+    const v = cfgClamp(f, c[f.k]);
+    if (f.sz === 1) b[o] = v; else if (f.s) dv.setInt16(o, v, true); else dv.setUint16(o, v, true);
+    o += f.sz;
+  }
+  return b;
+}
+function cfgUnpack(a){
+  const dv = new DataView(a.buffer, a.byteOffset, CFG_BYTES), c = {};
+  let o = 0;
+  for (const f of CFG_FIELDS) {
+    c[f.k] = f.sz === 1 ? dv.getUint8(o) : (f.s ? dv.getInt16(o, true) : dv.getUint16(o, true));
+    o += f.sz;
+  }
+  return c;
+}
+
+// ---- warna: RGB565 <-> #rrggbb
+const c565hex = v => '#' + [(v >> 11) & 31, (v >> 5) & 63, v & 31].map((x, i) => {
+  const e = i === 1 ? (x << 2) | (x >> 4) : (x << 3) | (x >> 2); return e.toString(16).padStart(2, '0'); }).join('');
+const hexC565 = h => { const n = parseInt(h.slice(1), 16); return (((n >> 16) & 255) >> 3 << 11) | (((n >> 8) & 255) >> 2 << 5) | ((n & 255) >> 3); };
+// Layar menggambar teks di sprite 8-bit: warna dibulatkan ke RGB332 (nilai 0 = transparan -> hindari untuk non-hitam)
+function q332(v){
+  let q = (((v >> 13) & 7) << 5) | (((v >> 8) & 7) << 2) | ((v >> 3) & 3);
+  if (!q && v) q = 1;
+  const r = (q >> 5) & 7, g = (q >> 2) & 7, b = q & 3;
+  return `rgb(${(r << 5) | (r << 2) | (r >> 1)},${(g << 5) | (g << 2) | (g >> 1)},${b * 85})`;
+}
+
+// ---- form (dibangun dari tabel)
+const cfgId = f => 'cf_' + f.k;
+function cfgRow(f){
+  const id = cfgId(f);
+  const lab = `<span class="fl">${f.l}${f.h ? `<small>${f.h}</small>` : ''}</span>`;
+  let ctl;
+  if (f.t === 'b') ctl = `<input id="${id}" type="checkbox">`;
+  else if (f.t === 'n') ctl = `<input id="${id}" type="number" min="${f.z ? 0 : f.lo}" max="${f.hi}" step="1" inputmode="numeric">`;
+  else if (f.t === 'r') ctl = `<span class="zoomrow" style="flex:1;max-width:55%"><input id="${id}" type="range" min="${f.lo}" max="${f.hi}" aria-label="${f.l}"><output id="${id}_v"></output></span>`;
+  else if (f.t === 'c') ctl = `<input id="${id}" type="color" aria-label="${f.l}">`;
+  else ctl = `<select id="${id}">${f.o.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select>`;
+  return `<label>${lab}${ctl}</label>`;
+}
+function cfgBuild(){
+  let html = '';
+  for (const g of CFG_GROUPS) {
+    let sg = null;
+    html += `<details class="cg"${g.open ? ' open' : ''}><summary>${g.t}</summary><div class="set">`;
+    if (g.id === 'tampil') html += '<canvas id="pv" width="240" height="240" aria-label="Pratinjau tampilan musik"></canvas>' +
+      '<p class="hint" style="margin:0">Pratinjau perkiraan (font asli layar sedikit berbeda). Latar memakai GIF yang sedang dimuat di tab GIF. ' +
+      'Warna di layar dibulatkan ke 256 warna, pratinjau sudah mengikutinya.</p>';
+    for (const f of CFG_FIELDS) {
+      if (f.g !== g.id) continue;
+      if (f.sg && f.sg !== sg) { sg = f.sg; html += `<h3 class="sg">${sg}</h3>`; }
+      html += cfgRow(f);
+    }
+    html += '</div></details>';
+  }
+  $('cfgForm').innerHTML = html;
+}
+function cfgOut(f, v){ return f.fmt === 'pct' ? Math.round(v / 255 * 100) + '%' : f.fmt === 'pct1' ? v + '%' : String(v); }
+function cfgSetForm(c){
+  for (const f of CFG_FIELDS) {
+    const el = $(cfgId(f)), v = cfgClamp(f, c[f.k]);
+    if (f.t === 'b') el.checked = !!v;
+    else if (f.t === 'c') el.value = c565hex(v);
+    else { el.value = v; if (f.t === 'r') $(cfgId(f) + '_v').textContent = cfgOut(f, v); }
+  }
+  cfgPreview();
+}
+function cfgFromForm(){
+  const c = {};
+  for (const f of CFG_FIELDS) {
+    const el = $(cfgId(f));
+    c[f.k] = f.t === 'b' ? (el.checked ? 1 : 0) : f.t === 'c' ? hexC565(el.value) : cfgClamp(f, el.value);
+  }
+  return c;
+}
+
+// ---- pratinjau tampilan musik (perkiraan; meniru gradien & pembulatan warna firmware)
+function cfgPreview(){
+  const cv = $('pv'); if (!cv) return;
+  const c = cfgFromForm(), x = cv.getContext('2d'), W = 240, H = 240, Y0 = H - OV_H;
+  const gi = $('gifPrev');
+  x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+  if (gi && !gi.hidden && gi.complete && gi.naturalWidth) x.drawImage(gi, c.gox, c.goy, gi.naturalWidth, gi.naturalHeight);
+  else { const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#3a6fd8'); g.addColorStop(1, '#d4568a'); x.fillStyle = g; x.fillRect(c.gox, c.goy, W, H); }
+  for (let r = 0; r < OV_H; r++) {                       // gradien: kecerahan k/32, smoothstep (sama dengan firmware)
+    let t = r / (OV_H - 1); t = t * t * (3 - 2 * t);
+    const k = Math.floor(32 - (32 - c.grad) * t + 0.5);
+    x.fillStyle = `rgba(0,0,0,${1 - k / 32})`; x.fillRect(0, Y0 + r, W, 1);
+  }
+  const PX = {1: 8, 2: 13, 4: 22}, FH = {1: 8, 2: 16, 4: 26}, m = c.mar;
+  const txt = (s, fnt, col, px, row, right) => {
+    x.font = `${PX[fnt]}px ${fnt === 1 ? 'monospace' : 'system-ui, sans-serif'}`; x.fillStyle = q332(col);
+    x.textBaseline = 'top'; x.textAlign = right ? 'right' : 'left';
+    x.fillText(s, px, Y0 + row + (FH[fnt] - PX[fnt]) / 2);
+  };
+  txt('Artis Contoh', c.fArtist, c.cArtist, m, c.rArtist);
+  x.save(); x.beginPath(); x.rect(m, Y0 + c.rTitle, W - m - (c.iSize + 20), FH[c.fTitle] + 2); x.clip();
+  txt('Judul Lagu Contoh', c.fTitle, c.cTitle, m, c.rTitle); x.restore();
+  txt('0:12', c.fTime, c.cArtist, m, c.rTime); txt('3:45', c.fTime, c.cArtist, W - m, c.rTime, true);
+  const bw = W - 2 * m;
+  x.fillStyle = q332(c.cBarBg); x.fillRect(m, Y0 + c.rBar, bw, c.bH);
+  x.fillStyle = q332(c.cBarFg); x.fillRect(m, Y0 + c.rBar, Math.round(bw * 0.35), c.bH);
+  x.fillStyle = q332(c.cTitle); const ix = W - m - c.iSize;   // ikon pause
+  x.fillRect(ix, Y0 + c.rIcon, 5, c.iSize); x.fillRect(ix + 8, Y0 + c.rIcon, 5, c.iSize);
+}
+
+// Kirim perintah (GET atau SET) lalu tunggu balasan status 12 lengkap; form diisi dengan nilai yang benar-benar tersimpan.
+async function cfgExchange(pkt, ms){
+  lastStatus = -1; lastCfg = null; cfgAsm = null;
+  const p = arm([12], ms);
+  await wr(pkt, 8000, 'timeout menulis perintah');
+  await p;
+  if (!lastCfg) throw new Error('balasan pengaturan tidak lengkap');
+  cfgSetForm(cfgUnpack(lastCfg));
+}
+const cfgTimeoutMsg = e => e.timeout || /tidak membalas/.test(e.message) ? 'ESP32 tidak membalas. Firmware belum mendukung pengaturan dari web (atau versinya lama)? Perbarui firmware.' : e.message;
+
+// ---- init
+cfgBuild();
+$('cfgForm').addEventListener('input', e => {
+  const f = CFG_FIELDS.find(q => cfgId(q) === e.target.id);
+  if (f && f.t === 'r') $(cfgId(f) + '_v').textContent = cfgOut(f, +e.target.value);
+  cfgPreview();
+});
+$('gifPrev').addEventListener('load', cfgPreview);
+$('cDef').onclick = () => { cfgSetForm(CFG_DEF); clog('Nilai default dimuat. Tekan Simpan untuk mengirim ke gantungan.'); };
+$('cRead').onclick = async () => {
+  if (!dataC) return;
+  busy = true; syncUI();
+  try { await cfgExchange(new Uint8Array([8]), 4000); clog('Pengaturan dibaca dari gantungan ✔', 'ok'); }
+  catch (e) { clog('Gagal: ' + cfgTimeoutMsg(e), 'bad'); }
+  busy = false; syncUI();
+};
+const cfgSave = async () => {
+  if (!dataC) return;
+  busy = true; syncUI();
+  try {
+    const c = cfgFromForm(); cfgSetForm(c);          // tampilkan nilai yang sudah dibatasi
+    await cfgExchange(cfgPack(c), 6000);
+    clog('Pengaturan tersimpan di gantungan ✔', 'ok');
+  } catch (e) { clog('Gagal: ' + cfgTimeoutMsg(e), 'bad'); }
+  busy = false; syncUI();
+};
+$('cSave').onclick = cfgSave;
+$('cSave2').onclick = cfgSave;
+cfgSetForm(CFG_DEF);
 
 // ================= KOMPRESI GIF OTOMATIS (jika > GIF_MAX) =================
 // Alur: decode semua frame -> skala GW x GH (isi layar) -> palet global (median cut)
@@ -1240,15 +1541,23 @@ $('gifSend').onclick = async () => {
   if (!dataC || !gifData) return;
   busy = true; syncUI(); $('gbar').value = 0;
   try {
+    const sl = gslotNo();
     const sec = await transfer(KIND_GIF, gifData, $('gbar'), glog);
-    glog(`Terkirim ✔ ${(gifData.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
+    glog(`Terkirim ✔ ke GIF ${sl + 1} · ${(gifData.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
   } catch (e) { glog('Gagal: ' + e.message, 'bad'); }
   busy = false; syncUI();
 };
 
 $('gifClear').onclick = async () => {
   busy = true; syncUI();
-  try { await clearOnDevice(KIND_GIF); $('gbar').value = 0; glog('GIF di gantungan dihapus.', 'ok'); }
+  try { const sl = gslotNo(); await clearOnDevice(KIND_GIF, sl); $('gbar').value = 0; glog(`GIF ${sl + 1} di gantungan dihapus.`, 'ok'); }
+  catch (e) { glog('Gagal: ' + e.message, 'bad'); }
+  busy = false; syncUI();
+};
+
+$('gifClearAll').onclick = async () => {
+  busy = true; syncUI();
+  try { await clearOnDevice(KIND_GIF, 255); $('gbar').value = 0; glog('Semua GIF di gantungan dihapus.', 'ok'); }
   catch (e) { glog('Gagal: ' + e.message, 'bad'); }
   busy = false; syncUI();
 };
@@ -1300,9 +1609,9 @@ try {
   button.pri{box-shadow:0 6px 16px -8px var(--ac)}
   button.ico{width:48px;font-size:1.3rem}
   .zoomrow input[type=range]{height:36px}
-  #log,#glog{padding:10px 12px;border-radius:10px;background:var(--soft);margin-top:12px;font-size:.86rem}
-  #log.ok,#glog.ok{background:rgba(18,128,92,.15)}
-  #log.bad,#glog.bad{background:rgba(198,47,59,.15)}
+  #log,#glog,#clog{padding:10px 12px;border-radius:10px;background:var(--soft);margin-top:12px;font-size:.86rem}
+  #log.ok,#glog.ok,#clog.ok{background:rgba(18,128,92,.15)}
+  #log.bad,#glog.bad,#clog.bad{background:rgba(198,47,59,.15)}
   progress{height:10px}
   .chip{display:none}
   .conn{display:none}
@@ -1329,14 +1638,16 @@ try {
 
   var bar = document.createElement('div'); bar.className = 'topbar';
   bar.innerHTML = '<button type="button" class="pill" id="pill" aria-label="Hubungkan atau putuskan gantungan"><i></i><span id="pillTxt">Hubungkan gantungan</span></button>' +
-    '<div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-t="foto">Foto</button><button type="button" role="tab" aria-selected="false" data-t="gif">GIF</button></div>';
+    '<div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-t="foto">Foto</button><button type="button" role="tab" aria-selected="false" data-t="gif">GIF</button><button type="button" role="tab" aria-selected="false" data-t="cfg">Config</button></div>';
   wrap.insertBefore(bar, wrap.firstChild);
 
   var gifPanel = document.querySelector('section[aria-label="Animasi GIF latar"]');
-  var photoEls = Array.prototype.filter.call(wrap.querySelectorAll('.fob, #hint, section.panel'), function(el){ return el !== gifPanel && !gifPanel.contains(el); });
+  var cfgPanel = $('cfgTab');
+  var photoEls = Array.prototype.filter.call(wrap.querySelectorAll('.fob, #hint, section.panel'), function(el){ return el !== gifPanel && !gifPanel.contains(el) && !cfgPanel.contains(el); });
   function showTab(t){
     photoEls.forEach(function(el){ if (t === 'foto') el.removeAttribute('data-tab-hidden'); else el.setAttribute('data-tab-hidden', ''); });
     if (t === 'gif') gifPanel.removeAttribute('data-tab-hidden'); else gifPanel.setAttribute('data-tab-hidden', '');
+    if (t === 'cfg') cfgPanel.removeAttribute('data-tab-hidden'); else cfgPanel.setAttribute('data-tab-hidden', '');
     bar.querySelectorAll('[role=tab]').forEach(function(b){ b.setAttribute('aria-selected', b.dataset.t === t); });
     window.scrollTo(0, 0);
     requestAnimationFrame(function(){ window.dispatchEvent(new Event('resize')); });
@@ -1366,7 +1677,7 @@ try {
     clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 3500);
     if (k === 'ok' && navigator.vibrate) navigator.vibrate(30);
   }
-  ['log', 'glog'].forEach(function(id){
+  ['log', 'glog', 'clog'].forEach(function(id){
     new MutationObserver(function(){ pop($(id)); }).observe($(id), {childList: true, attributes: true, attributeFilter: ['class']});
   });
 })();
