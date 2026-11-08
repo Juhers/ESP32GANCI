@@ -120,6 +120,10 @@
   .sg{margin:6px 0 0;font-size:.8rem;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
   .set input[type=color]{width:48px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex:none}
   .set input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--ac)}
+  .srow{display:flex;justify-content:space-between;gap:10px;font-size:.88rem;padding:6px 0;border-bottom:1px solid var(--line)}
+  .srow:last-child{border-bottom:0}
+  .srow b{font-variant-numeric:tabular-nums;text-align:right}
+  .srow small{color:var(--mut);font-weight:400}
   .fsinfo{margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:8px 10px;align-items:center}
   .fsinfo progress{grid-column:1/-1;margin:0}
   .fsinfo .fstxt{font-size:.82rem;color:var(--mut);min-width:0}
@@ -292,6 +296,17 @@
       <p class="hint" style="margin:10px 0 0">Pengaturan tersimpan di flash gantungan dan tetap ada setelah restart. Tetap di <code>Config.h</code> (butuh compile ulang): pin, ukuran layar, nama BLE, jumlah slot &amp; batas ukuran file, <code>WAKE_LEVEL</code>, <code>OV_H</code>, <code>MARQ_MAX_W</code>.</p>
     </section>
     <div id="cfgForm"></div>
+    <details class="cg" id="statBox">
+      <summary>Statistik pemakaian</summary>
+      <div class="set">
+        <div id="statList" role="status">Hubungkan gantungan untuk melihat statistik.</div>
+        <div class="grid2" style="margin-top:0">
+          <button id="stRead" type="button" disabled>Segarkan</button>
+          <button id="stReset" type="button" disabled>Nolkan statistik</button>
+        </div>
+        <p class="hint" style="margin:0">Disimpan di flash tiap 10 menit dan sebelum deep sleep (maks. ±10 menit terakhir hilang bila baterai dicabut mendadak). Waktu aktif tidak termasuk saat deep sleep.</p>
+      </div>
+    </details>
     <section class="panel">
       <button id="cSave2" class="pri btn full" type="button" disabled>Simpan ke gantungan</button>
     </section>
@@ -309,6 +324,7 @@
  *   [01][size u32][crc32 u32][jenis u8][slot u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar; slot 0..SLOTS-1 / 0..GIF_SLOTS-1)
  *   [02][seq u16][payload<=100B]         DATA
  *   [03] END   [04] ABORT   [05][jenis u8][slot u8] CLEAR   (slot 255 = semua slot jenis itu)
+ *   [0A] STATS -> status 14 (13 x u32, lihat Stats.h), [0B] STATS_RESET -> nolkan lalu status 14
  *   [09] INFO -> status 13 (dipecah seperti status 12): total u32, terpakai u32, ukuran slot foto & GIF (u16 KB)
  *   [07][CFG_BYTES pengaturan] SET pengaturan, [08] GET pengaturan -> balasan status 12 dipecah:
  *   [12][idx][total][<=16 byte] (dirakit di onNotify; tiap notifikasi <= 19 byte agar aman di MTU 23)
@@ -421,6 +437,8 @@ function syncUI(){
   $('slot').disabled = busy;
   $('gslot').disabled = busy;
   document.querySelectorAll('.fsref').forEach(b => { b.disabled = busy || !dataC; });
+  $('stRead').disabled = busy || !dataC;
+  $('stReset').disabled = busy || !dataC;
   $('gifSend').disabled = busy || !(dataC && gifData);
   $('gifClear').disabled = busy || !dataC;
   $('gifClearAll').disabled = busy || !dataC;
@@ -580,12 +598,13 @@ function setChip(on, name){
 let lastOff = 0;   // byte yang sudah diterima ESP32 (dari balasan status 11)
 let lastCfg = null;   // pengaturan terakhir dari ESP32 (status 12, sudah lengkap)
 const INFO_BYTES = 8 + 2 * (SLOTS + GIF_SLOTS);   // HARUS = INFO_BYTES di Image_Reader.cpp
-let fsAsm = {};       // perakitan balasan bertahap per jenis status (12 = pengaturan, 13 = info LittleFS): {tot, buf, got}
+const STATS_BYTES = 13 * 4;                       // HARUS = STATS_BYTES di Stats.h
+let fsAsm = {};       // perakitan balasan bertahap per jenis status (12 = pengaturan, 13 = info LittleFS, 14 = statistik): {tot, buf, got}
 function onNotify(e){
   const v = e.target.value, st = v.getUint8(0);
-  if (st === 12 || st === 13) {                     // [st][idx][total][<=16 byte]
+  if (st === 12 || st === 13 || st === 14) {        // [st][idx][total][<=16 byte]
     if (v.byteLength < 4) return;
-    const len = st === 12 ? CFG_BYTES : INFO_BYTES;
+    const len = st === 12 ? CFG_BYTES : st === 13 ? INFO_BYTES : STATS_BYTES;
     const idx = v.getUint8(1), tot = v.getUint8(2), n = v.byteLength - 3;
     let a = fsAsm[st];
     if (idx === 0 || !a || a.tot !== tot) a = fsAsm[st] = {tot, buf: new Uint8Array(len), got: 0};
@@ -593,6 +612,7 @@ function onNotify(e){
     if (a.got < a.tot) { if (st === 12) lastStatus = -2; return; }   // potongan belum lengkap: jangan bangunkan penunggu
     fsAsm[st] = null;
     if (st === 13) { renderInfo(a.buf); return; }   // info penyimpanan: tidak ada yang menunggu
+    if (st === 14) { renderStats(a.buf); return; }  // statistik: tidak ada yang menunggu
     lastCfg = a.buf; lastStatus = 12; if (waiter) waiter();
     return;
   }
@@ -619,6 +639,38 @@ function renderInfo(a){
     el.querySelector('.fstxt').textContent = txt;
   });
 }
+// ---- statistik pemakaian (status 14): 13 x u32 (urutan sama dengan Stats.h)
+const nf = n => n.toLocaleString('id-ID');
+const fmtDur = t => { const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), d = t % 60;
+  return h ? `${h} j ${m} m` : m ? `${m} m ${d} d` : `${d} d`; };
+function renderStats(a){
+  const dv = new DataView(a.buffer, a.byteOffset, STATS_BYTES), v = [];
+  for (let i = 0; i < 13; i++) v.push(dv.getUint32(4 * i, true));
+  const [boots, wakes, weak, sleeps, songs, gifRot, ble, scr, play, act, sess, heap, minHeap] = v;
+  const runs = boots + wakes;
+  const rows = [
+    ['Nyala dari mati / reset', nf(boots)], ['Bangun valid dari deep sleep', nf(wakes)],
+    ['Bangun lemah (getaran kecil, tidur lagi)', nf(weak)], ['Masuk deep sleep', nf(sleeps)],
+    ['Lagu terganti', nf(songs)], ['Rotasi GIF', nf(gifRot)], ['Koneksi iPhone', nf(ble)],
+    ['Total waktu aktif', fmtDur(act)],
+    ['Layar menyala', fmtDur(scr) + (act ? ` <small>(${Math.round(scr / act * 100)}% dari aktif)</small>` : '')],
+    ['Lagu diputar', fmtDur(play)],
+    ['Rata-rata aktif per nyala/bangun', runs ? fmtDur(Math.round(act / runs)) : '–'],
+    ['Sesi ini', fmtDur(sess)],
+    ['RAM bebas <small>(terendah)</small>', `${(heap / 1024).toFixed(0)} KB <small>(${(minHeap / 1024).toFixed(0)} KB)</small>`],
+  ];
+  $('statList').innerHTML = rows.map(r => `<div class="srow"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+}
+async function reqStats(){
+  if (!dataC) return;
+  try { await wr(new Uint8Array([10]), 4000, 'timeout meminta statistik'); } catch (e) { /* tidak kritis */ }
+}
+$('stRead').onclick = () => reqStats();
+$('stReset').onclick = async () => {
+  if (!dataC || !confirm('Nolkan semua statistik di gantungan?')) return;
+  try { await wr(new Uint8Array([11]), 4000, 'timeout mereset statistik'); clog('Statistik dinolkan.', 'ok'); }
+  catch (e) { clog('Gagal: ' + e.message, 'bad'); }
+};
 async function reqInfo(){                           // minta info; balasan datang lewat onNotify -> renderInfo
   if (!dataC) return;
   try { await wr(new Uint8Array([9]), 4000, 'timeout meminta info penyimpanan'); } catch (e) { /* tidak kritis */ }
@@ -632,7 +684,7 @@ async function cfgAuto(){
   try { await cfgExchange(new Uint8Array([8]), 3000); clog('Pengaturan dimuat dari gantungan.', 'ok'); }
   catch (e) { clog('Pengaturan tidak bisa dibaca: ' + cfgTimeoutMsg(e)); }
   busy = false; syncUI();
-  reqInfo();
+  reqInfo(); reqStats();
 }
 
 $('conn').onclick = async () => {
