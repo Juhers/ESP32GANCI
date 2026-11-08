@@ -120,6 +120,10 @@
   .sg{margin:6px 0 0;font-size:.8rem;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
   .set input[type=color]{width:48px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex:none}
   .set input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--ac)}
+  .fsinfo{margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:8px 10px;align-items:center}
+  .fsinfo progress{grid-column:1/-1;margin:0}
+  .fsinfo .fstxt{font-size:.82rem;color:var(--mut);min-width:0}
+  .fsinfo button{min-height:34px;padding:0 12px;font-size:.82rem}
   #pv{width:min(100%,300px);aspect-ratio:1/1;justify-self:center;border-radius:8px;background:#000;image-rendering:auto}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -181,6 +185,7 @@
     <p class="hint" style="margin:8px 0 0">Beberapa foto yang tersimpan akan tampil bergantian (slide show) saat tidak ada musik.</p>
     <progress id="bar" value="0" max="1"></progress>
     <div id="log" role="status">Belum ada foto.</div>
+    <div class="fsinfo" data-fsinfo><progress value="0" max="1" aria-label="Penyimpanan LittleFS"></progress><div class="fstxt" role="status">Penyimpanan (LittleFS): belum dibaca</div><button type="button" class="fsref" disabled>Segarkan</button></div>
 
     <details>
       <summary>Pengaturan</summary>
@@ -250,6 +255,7 @@
       <p class="hint" style="margin:8px 0 0">Beberapa GIF yang tersimpan berganti otomatis saat lagu terganti (atur di tab Config → GIF latar). Ruang flash terbatas: kecilkan batas ukuran GIF bila menyimpan banyak slot.</p>
       <progress id="gbar" value="0" max="1"></progress>
       <div id="glog" role="status">Pilih GIF atau video, atur bagian yang tampil (geser, cubit atau gulir untuk zoom), lalu tekan "Buat GIF". Hasil yang melebihi batas ukuran dikompres otomatis.</div>
+      <div class="fsinfo" data-fsinfo><progress value="0" max="1" aria-label="Penyimpanan LittleFS"></progress><div class="fstxt" role="status">Penyimpanan (LittleFS): belum dibaca</div><button type="button" class="fsref" disabled>Segarkan</button></div>
 
       <details>
         <summary>Pengaturan GIF &amp; video</summary>
@@ -303,6 +309,7 @@
  *   [01][size u32][crc32 u32][jenis u8][slot u8]  START   (jenis: 0 = JPEG foto, 1 = GIF latar; slot 0..SLOTS-1 / 0..GIF_SLOTS-1)
  *   [02][seq u16][payload<=100B]         DATA
  *   [03] END   [04] ABORT   [05][jenis u8][slot u8] CLEAR   (slot 255 = semua slot jenis itu)
+ *   [09] INFO -> status 13 (dipecah seperti status 12): total u32, terpakai u32, ukuran slot foto & GIF (u16 KB)
  *   [07][CFG_BYTES pengaturan] SET pengaturan, [08] GET pengaturan -> balasan status 12 dipecah:
  *   [12][idx][total][<=16 byte] (dirakit di onNotify; tiap notifikasi <= 19 byte agar aman di MTU 23)
  *   [06][size u32][crc32 u32][jenis u8]  RESUME  (tanya: sudah berapa byte yang diterima untuk file ini?)
@@ -413,6 +420,7 @@ function syncUI(){
   $('cSave2').disabled = busy || !dataC;
   $('slot').disabled = busy;
   $('gslot').disabled = busy;
+  document.querySelectorAll('.fsref').forEach(b => { b.disabled = busy || !dataC; });
   $('gifSend').disabled = busy || !(dataC && gifData);
   $('gifClear').disabled = busy || !dataC;
   $('gifClearAll').disabled = busy || !dataC;
@@ -571,22 +579,51 @@ function setChip(on, name){
 
 let lastOff = 0;   // byte yang sudah diterima ESP32 (dari balasan status 11)
 let lastCfg = null;   // pengaturan terakhir dari ESP32 (status 12, sudah lengkap)
-let cfgAsm = null;    // perakitan balasan pengaturan yang dipecah: {tot, buf, got}
+const INFO_BYTES = 8 + 2 * (SLOTS + GIF_SLOTS);   // HARUS = INFO_BYTES di Image_Reader.cpp
+let fsAsm = {};       // perakitan balasan bertahap per jenis status (12 = pengaturan, 13 = info LittleFS): {tot, buf, got}
 function onNotify(e){
   const v = e.target.value, st = v.getUint8(0);
-  if (st === 12) {                                  // [12][idx][total][<=16 byte]
+  if (st === 12 || st === 13) {                     // [st][idx][total][<=16 byte]
     if (v.byteLength < 4) return;
+    const len = st === 12 ? CFG_BYTES : INFO_BYTES;
     const idx = v.getUint8(1), tot = v.getUint8(2), n = v.byteLength - 3;
-    if (idx === 0 || !cfgAsm || cfgAsm.tot !== tot) cfgAsm = {tot, buf: new Uint8Array(CFG_BYTES), got: 0};
-    if (idx * CFG_FRAG + n <= CFG_BYTES) { cfgAsm.buf.set(new Uint8Array(v.buffer, v.byteOffset + 3, n), idx * CFG_FRAG); cfgAsm.got++; }
-    if (cfgAsm.got >= cfgAsm.tot) { lastCfg = cfgAsm.buf; cfgAsm = null; lastStatus = 12; if (waiter) waiter(); }
-    else lastStatus = -2;                           // potongan belum lengkap: jangan bangunkan penunggu
+    let a = fsAsm[st];
+    if (idx === 0 || !a || a.tot !== tot) a = fsAsm[st] = {tot, buf: new Uint8Array(len), got: 0};
+    if (idx * CFG_FRAG + n <= len) { a.buf.set(new Uint8Array(v.buffer, v.byteOffset + 3, n), idx * CFG_FRAG); a.got++; }
+    if (a.got < a.tot) { if (st === 12) lastStatus = -2; return; }   // potongan belum lengkap: jangan bangunkan penunggu
+    fsAsm[st] = null;
+    if (st === 13) { renderInfo(a.buf); return; }   // info penyimpanan: tidak ada yang menunggu
+    lastCfg = a.buf; lastStatus = 12; if (waiter) waiter();
     return;
   }
   lastOff = v.byteLength >= 5 ? v.getUint32(1, true) : 0;
   lastStatus = st;
   if (waiter) waiter();
 }
+
+// ---- info penyimpanan LittleFS (status 13): total u32, terpakai u32, ukuran tiap slot foto & GIF (u16, KB; 0 = kosong)
+const fmtB = b => b >= 1048576 ? (b / 1048576).toFixed(2).replace('.', ',') + ' MB' : Math.round(b / 1024) + ' KB';
+function renderInfo(a){
+  const dv = new DataView(a.buffer, a.byteOffset, INFO_BYTES);
+  const tot = dv.getUint32(0, true), used = dv.getUint32(4, true);
+  const kb = [], gk = [];
+  for (let i = 0; i < SLOTS; i++) kb.push(dv.getUint16(8 + 2 * i, true));
+  for (let i = 0; i < GIF_SLOTS; i++) gk.push(dv.getUint16(8 + 2 * (SLOTS + i), true));
+  const sum = x => x.reduce((p, q) => p + q, 0), cnt = x => x.filter(Boolean).length;
+  kb.forEach((k, i) => { $('slot').options[i].text = 'Foto ' + (i + 1) + (k ? ' · ' + k + ' KB' : ' · kosong'); });
+  gk.forEach((k, i) => { $('gslot').options[i].text = 'GIF ' + (i + 1) + (k ? ' · ' + k + ' KB' : ' · kosong'); });
+  const txt = tot ? `Terpakai ${fmtB(used)} dari ${fmtB(tot)} · bebas ${fmtB(Math.max(0, tot - used))}\n` +
+    `Foto ${cnt(kb)}/${SLOTS} (${fmtB(sum(kb) * 1024)}) · GIF ${cnt(gk)}/${GIF_SLOTS} (${fmtB(sum(gk) * 1024)})` : 'LittleFS tidak aktif (cek Partition Scheme).';
+  document.querySelectorAll('[data-fsinfo]').forEach(el => {
+    el.querySelector('progress').value = tot ? used / tot : 0;
+    el.querySelector('.fstxt').textContent = txt;
+  });
+}
+async function reqInfo(){                           // minta info; balasan datang lewat onNotify -> renderInfo
+  if (!dataC) return;
+  try { await wr(new Uint8Array([9]), 4000, 'timeout meminta info penyimpanan'); } catch (e) { /* tidak kritis */ }
+}
+document.querySelectorAll('.fsref').forEach(b => { b.onclick = () => reqInfo(); });
 
 // Setelah terhubung: muat pengaturan gantungan ke form (firmware lama tidak membalas -> pesan saja)
 async function cfgAuto(){
@@ -595,6 +632,7 @@ async function cfgAuto(){
   try { await cfgExchange(new Uint8Array([8]), 3000); clog('Pengaturan dimuat dari gantungan.', 'ok'); }
   catch (e) { clog('Pengaturan tidak bisa dibaca: ' + cfgTimeoutMsg(e)); }
   busy = false; syncUI();
+  reqInfo();
 }
 
 $('conn').onclick = async () => {
@@ -773,21 +811,21 @@ $('send').onclick = async () => {
     const sec = await transfer(KIND_JPEG, enc.u, $('bar'), log);
     log(`Terkirim ✔ ke foto ${sl + 1} · ${(enc.u.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
   } catch (e) { log('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 $('clear').onclick = async () => {
   busy = true; syncUI();
   try { const sl = slotNo(); await clearOnDevice(KIND_JPEG, sl); $('bar').value = 0; log(`Foto ${sl + 1} di gantungan dihapus.`, 'ok'); }
   catch (e) { log('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 $('clearAll').onclick = async () => {
   busy = true; syncUI();
   try { await clearOnDevice(KIND_JPEG, 255); $('bar').value = 0; log('Semua foto di gantungan dihapus.', 'ok'); }
   catch (e) { log('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 // ================= PENGATURAN GANTUNGAN (Config dari web) =================
@@ -988,7 +1026,7 @@ function cfgPreview(){
 
 // Kirim perintah (GET atau SET) lalu tunggu balasan status 12 lengkap; form diisi dengan nilai yang benar-benar tersimpan.
 async function cfgExchange(pkt, ms){
-  lastStatus = -1; lastCfg = null; cfgAsm = null;
+  lastStatus = -1; lastCfg = null; fsAsm[12] = null;
   const p = arm([12], ms);
   await wr(pkt, 8000, 'timeout menulis perintah');
   await p;
@@ -1545,21 +1583,21 @@ $('gifSend').onclick = async () => {
     const sec = await transfer(KIND_GIF, gifData, $('gbar'), glog);
     glog(`Terkirim ✔ ke GIF ${sl + 1} · ${(gifData.length / 1024).toFixed(1)} KB dalam ${sec.toFixed(1)} detik`, 'ok');
   } catch (e) { glog('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 $('gifClear').onclick = async () => {
   busy = true; syncUI();
   try { const sl = gslotNo(); await clearOnDevice(KIND_GIF, sl); $('gbar').value = 0; glog(`GIF ${sl + 1} di gantungan dihapus.`, 'ok'); }
   catch (e) { glog('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 $('gifClearAll').onclick = async () => {
   busy = true; syncUI();
   try { await clearOnDevice(KIND_GIF, 255); $('gbar').value = 0; glog('Semua GIF di gantungan dihapus.', 'ok'); }
   catch (e) { glog('Gagal: ' + e.message, 'bad'); }
-  busy = false; syncUI();
+  busy = false; syncUI(); reqInfo();
 };
 
 layout(); gLayout(); syncUI();
